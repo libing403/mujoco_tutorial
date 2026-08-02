@@ -1,0 +1,11 @@
+<mujoco model="offscreen render">
+  <visual><global offwidth="320" offheight="240"/></visual>
+  <worldbody>
+    <light pos="0 -2 3" dir="0 1 -1"/>
+    <geom type="plane" size="2 2 .1" rgba=".7 .7 .7 1"/>
+    <body pos="0 0 .25">
+      <geom type="box" size=".25 .18 .25" rgba=".1 .4 .9 1"/>
+    </body>
+    <camera name="view" pos="1.5 -2 1.2" xyaxes=".8 .6 0 -.25 .33 .91" fovy="45"/>
+  </worldbody>
+</mujoco>

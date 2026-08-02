@@ -1,0 +1,10 @@
+<mujoco model="sampled PD">
+  <option timestep="0.001" gravity="0 0 0" integrator="implicitfast"/>
+  <worldbody>
+    <body>
+      <joint name="joint" axis="0 0 1" damping="0.05" armature="0.02"/>
+      <geom type="capsule" fromto="0 0 0 .6 0 0" size=".04" mass="1"/>
+    </body>
+  </worldbody>
+  <actuator><motor joint="joint" ctrlrange="-3 3" ctrllimited="true"/></actuator>
+</mujoco>

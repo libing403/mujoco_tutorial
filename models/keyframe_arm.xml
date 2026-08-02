@@ -1,0 +1,19 @@
+<mujoco model="keyframe_arm">
+  <compiler angle="degree"/>
+  <worldbody>
+    <body pos="0 0 1">
+      <joint name="j1" axis="0 1 0"/>
+      <geom type="capsule" fromto="0 0 0 0 0 -.5" size=".04" mass="1"/>
+      <body pos="0 0 -.5">
+        <joint name="j2" axis="0 1 0"/>
+        <geom type="capsule" fromto="0 0 0 0 0 -.4" size=".035" mass=".7"/>
+        <site name="tool" pos="0 0 -.4" size=".02"/>
+      </body>
+    </body>
+  </worldbody>
+  <keyframe>
+    <key name="home" qpos="0 0"/>
+    <key name="reach" time="1" qpos="45 -70"/>
+    <key name="fold" time="2" qpos="-30 110"/>
+  </keyframe>
+</mujoco>

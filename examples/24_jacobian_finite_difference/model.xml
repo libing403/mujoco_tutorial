@@ -1,0 +1,16 @@
+<mujoco model="jacobian_two_link">
+  <compiler angle="radian"/>
+  <option gravity="0 0 0"/>
+  <worldbody>
+    <body pos="0 0 1">
+      <joint name="shoulder" axis="0 1 0"/>
+      <geom type="capsule" fromto="0 0 0 0 0 -.5" size=".04" mass="1"/>
+      <body pos="0 0 -.5">
+        <joint name="elbow" axis="0 1 0"/>
+        <geom type="capsule" fromto="0 0 0 0 0 -.4" size=".035" mass=".7"/>
+        <site name="tool" pos="0 0 -.4" size=".02"/>
+      </body>
+    </body>
+  </worldbody>
+</mujoco>
+

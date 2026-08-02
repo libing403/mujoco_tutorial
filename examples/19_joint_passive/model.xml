@@ -1,0 +1,16 @@
+<mujoco model="joint_passive_bench">
+  <compiler angle="radian"/>
+  <option timestep="0.001" gravity="0 0 0" integrator="implicitfast"/>
+  <default>
+    <joint axis="0 1 0"/>
+    <geom type="capsule" fromto="0 0 0 0 0 -.4" size=".03" mass="1" contype="0" conaffinity="0"/>
+  </default>
+  <worldbody>
+    <body pos="-1 0 1"><joint name="plain"/><geom/></body>
+    <body pos="-.5 0 1"><joint name="damped" damping="1"/><geom/></body>
+    <body pos="0 0 1"><joint name="dry" frictionloss=".5"/><geom/></body>
+    <body pos=".5 0 1"><joint name="spring" stiffness="5" springref="0"/><geom/></body>
+    <body pos="1 0 1"><joint name="armature" armature="1"/><geom/></body>
+  </worldbody>
+</mujoco>
+

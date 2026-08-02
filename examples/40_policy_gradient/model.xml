@@ -1,0 +1,10 @@
+<mujoco model="policy gradient">
+  <option timestep="0.01" integrator="implicitfast"/>
+  <worldbody>
+    <body>
+      <joint name="hinge" axis="0 1 0" damping=".02" armature=".01"/>
+      <geom type="capsule" fromto="0 0 0 0 0 -.5" size=".03" mass="1"/>
+    </body>
+  </worldbody>
+  <actuator><motor joint="hinge"/></actuator>
+</mujoco>

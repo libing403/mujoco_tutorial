@@ -1,0 +1,10 @@
+<mujoco model="sensor plugin">
+  <extension><plugin plugin="book.sensor.state"/></extension>
+  <worldbody>
+    <body>
+      <joint name="hinge" axis="0 1 0"/>
+      <geom type="capsule" fromto="0 0 0 0 0 -.4" size=".03"/>
+    </body>
+  </worldbody>
+  <sensor><plugin name="time_and_angle" plugin="book.sensor.state"/></sensor>
+</mujoco>

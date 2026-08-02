@@ -1,0 +1,10 @@
+<mujoco model="equality_loop">
+  <option timestep="0.002"/>
+  <worldbody>
+    <geom type="plane" size="2 2 .1"/>
+    <body name="body1" pos="-.3 0 1"><freejoint/><geom type="sphere" size=".08" mass="1"/></body>
+    <body name="body2" pos=".3 0 1"><freejoint/><geom type="sphere" size=".08" mass="1"/></body>
+  </worldbody>
+  <equality><connect name="distance_link" body1="body1" body2="body2" anchor="0 0 1" solref=".02 1"/></equality>
+</mujoco>
+

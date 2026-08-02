@@ -1,0 +1,16 @@
+<mujoco model="chaotic_double_pendulum">
+  <compiler angle="radian"/>
+  <option timestep="0.001" integrator="RK4" gravity="0 0 -9.81"/>
+  <worldbody>
+    <body pos="0 0 1.6">
+      <joint name="q1" axis="0 1 0"/>
+      <geom type="capsule" fromto="0 0 0 0 0 -.6" size=".025" mass="1"/>
+      <body pos="0 0 -.6">
+        <joint name="q2" axis="0 1 0"/>
+        <geom type="capsule" fromto="0 0 0 0 0 -.6" size=".025" mass="1"/>
+        <site name="tip" pos="0 0 -.6" size=".02"/>
+      </body>
+    </body>
+  </worldbody>
+</mujoco>
+

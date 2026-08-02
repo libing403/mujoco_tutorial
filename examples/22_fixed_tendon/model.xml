@@ -1,0 +1,22 @@
+<mujoco model="fixed_tendon_mapping">
+  <compiler angle="radian"/>
+  <option gravity="0 0 0"/>
+  <worldbody>
+    <body pos="0 0 1">
+      <joint name="q1" axis="0 1 0"/>
+      <geom type="capsule" fromto="0 0 0 0 0 -.4" size=".03" mass="1"/>
+      <body pos="0 0 -.4">
+        <joint name="q2" axis="0 1 0"/>
+        <geom type="capsule" fromto="0 0 0 0 0 -.3" size=".025" mass=".5"/>
+      </body>
+    </body>
+  </worldbody>
+  <tendon>
+    <fixed name="differential">
+      <joint joint="q1" coef="1"/>
+      <joint joint="q2" coef="-2"/>
+    </fixed>
+  </tendon>
+  <actuator><motor name="tendon_motor" tendon="differential" gear="1"/></actuator>
+</mujoco>
+

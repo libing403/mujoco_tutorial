@@ -1,0 +1,17 @@
+<mujoco model="contact_softness">
+  <option timestep="0.001"/>
+  <worldbody>
+    <geom name="floor" type="plane" size="2 2 .1" contype="0" conaffinity="0"/>
+    <body name="soft_body" pos="-.3 0 1">
+      <freejoint/><geom name="soft_ball" type="sphere" size=".1" mass="1" contype="0" conaffinity="0" rgba=".2 .5 1 1"/>
+    </body>
+    <body name="hard_body" pos=".3 0 1">
+      <freejoint/><geom name="hard_ball" type="sphere" size=".1" mass="1" contype="0" conaffinity="0" rgba="1 .3 .2 1"/>
+    </body>
+  </worldbody>
+  <contact>
+    <pair geom1="floor" geom2="soft_ball" solref=".08 1"/>
+    <pair geom1="floor" geom2="hard_ball" solref=".008 1"/>
+  </contact>
+</mujoco>
+

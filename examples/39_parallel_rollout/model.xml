@@ -1,0 +1,9 @@
+<mujoco model="parallel rollout">
+  <option timestep="0.001" integrator="implicitfast"/>
+  <worldbody>
+    <body>
+      <joint axis="0 1 0" damping=".03"/>
+      <geom type="capsule" fromto="0 0 0 0 0 -.5" size=".03" mass="1"/>
+    </body>
+  </worldbody>
+</mujoco>

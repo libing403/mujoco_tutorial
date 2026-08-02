@@ -1,0 +1,11 @@
+<mujoco model="contact wrench">
+  <option timestep="0.001" solver="Newton" cone="elliptic"/>
+  <worldbody>
+    <geom name="floor" type="plane" size="2 2 .1" friction="0.8 0.01 0.001"/>
+    <body name="box" pos="0 0 .4">
+      <freejoint/>
+      <geom name="box_geom" type="box" size=".12 .09 .06"
+            mass="2" friction="0.8 0.01 0.001" condim="3"/>
+    </body>
+  </worldbody>
+</mujoco>

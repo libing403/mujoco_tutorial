@@ -1,0 +1,10 @@
+<mujoco model="LQR inverted pendulum">
+  <option timestep="0.005" integrator="implicitfast"/>
+  <worldbody>
+    <body>
+      <joint name="hinge" axis="0 1 0" damping=".02" armature=".01"/>
+      <geom type="capsule" fromto="0 0 0 0 0 .6" size=".035" mass="1"/>
+    </body>
+  </worldbody>
+  <actuator><motor joint="hinge" ctrlrange="-10 10" ctrllimited="true"/></actuator>
+</mujoco>

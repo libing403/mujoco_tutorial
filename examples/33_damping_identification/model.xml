@@ -1,0 +1,9 @@
+<mujoco model="damping identification">
+  <option timestep="0.002" integrator="RK4"/>
+  <worldbody>
+    <body>
+      <joint name="hinge" axis="0 1 0" damping="0"/>
+      <geom type="capsule" fromto="0 0 0 0 0 -.6" size=".035" mass="1"/>
+    </body>
+  </worldbody>
+</mujoco>

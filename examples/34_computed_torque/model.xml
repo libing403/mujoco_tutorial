@@ -1,0 +1,17 @@
+<mujoco model="computed torque">
+  <option timestep="0.001" integrator="implicitfast"/>
+  <worldbody>
+    <body>
+      <joint name="q1" axis="0 1 0" damping=".05" armature=".01"/>
+      <geom type="capsule" fromto="0 0 0 .5 0 0" size=".035" mass="2"/>
+      <body pos=".5 0 0">
+        <joint name="q2" axis="0 1 0" damping=".04" armature=".01"/>
+        <geom type="capsule" fromto="0 0 0 .4 0 0" size=".03" mass="1"/>
+      </body>
+    </body>
+  </worldbody>
+  <actuator>
+    <motor joint="q1" ctrlrange="-30 30" ctrllimited="true"/>
+    <motor joint="q2" ctrlrange="-30 30" ctrllimited="true"/>
+  </actuator>
+</mujoco>

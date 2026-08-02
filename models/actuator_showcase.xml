@@ -1,0 +1,14 @@
+<mujoco model="actuator_showcase">
+  <compiler angle="radian"/><option timestep="0.001" gravity="0 0 0"/>
+  <worldbody>
+    <body pos="-.5 0 1"><joint name="motor_joint"/><geom type="capsule" fromto="0 0 0 0 0 -.3" size=".03" mass=".5"/></body>
+    <body pos="0 0 1"><joint name="position_joint"/><geom type="capsule" fromto="0 0 0 0 0 -.3" size=".03" mass=".5"/></body>
+    <body pos=".5 0 1"><joint name="velocity_joint"/><geom type="capsule" fromto="0 0 0 0 0 -.3" size=".03" mass=".5"/></body>
+  </worldbody>
+  <actuator>
+    <motor name="direct_torque" joint="motor_joint" ctrlrange="-2 2" ctrllimited="true"/>
+    <position name="position_servo" joint="position_joint" kp="20" kv="2"/>
+    <velocity name="velocity_servo" joint="velocity_joint" kv="2"/>
+  </actuator>
+</mujoco>
+

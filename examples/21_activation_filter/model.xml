@@ -1,0 +1,19 @@
+<mujoco model="activation_filter">
+  <compiler angle="radian"/>
+  <option timestep="0.005" gravity="0 0 0"/>
+  <default>
+    <joint axis="0 1 0" damping=".1"/>
+    <geom type="capsule" fromto="0 0 0 0 0 -.4" size=".03" mass="1" contype="0" conaffinity="0"/>
+  </default>
+  <worldbody>
+    <body pos="-.6 0 1"><joint name="stateless_joint"/><geom/></body>
+    <body pos="0 0 1"><joint name="filter_joint"/><geom/></body>
+    <body pos=".6 0 1"><joint name="exact_joint"/><geom/></body>
+  </worldbody>
+  <actuator>
+    <general name="stateless" joint="stateless_joint" gainprm="1"/>
+    <general name="filter" joint="filter_joint" dyntype="filter" dynprm=".05" gainprm="1"/>
+    <general name="filterexact" joint="exact_joint" dyntype="filterexact" dynprm=".05" gainprm="1"/>
+  </actuator>
+</mujoco>
+

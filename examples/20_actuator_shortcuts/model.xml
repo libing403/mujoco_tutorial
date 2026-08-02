@@ -1,0 +1,19 @@
+<mujoco model="actuator_shortcuts">
+  <compiler angle="radian"/>
+  <option timestep="0.001" gravity="0 0 0" integrator="implicitfast"/>
+  <default>
+    <joint axis="0 1 0" damping=".1"/>
+    <geom type="capsule" fromto="0 0 0 0 0 -.4" size=".03" mass="1" contype="0" conaffinity="0"/>
+  </default>
+  <worldbody>
+    <body pos="-.6 0 1"><joint name="motor_joint"/><geom/></body>
+    <body pos="0 0 1"><joint name="position_joint"/><geom/></body>
+    <body pos=".6 0 1"><joint name="velocity_joint"/><geom/></body>
+  </worldbody>
+  <actuator>
+    <motor name="motor" joint="motor_joint" gear="1"/>
+    <position name="position" joint="position_joint" kp="20" kv="3"/>
+    <velocity name="velocity" joint="velocity_joint" kv="3"/>
+  </actuator>
+</mujoco>
+

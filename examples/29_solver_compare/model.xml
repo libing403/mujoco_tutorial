@@ -1,0 +1,12 @@
+<mujoco model="solver comparison">
+  <option timestep="0.001" iterations="50" tolerance="1e-10" cone="pyramidal"/>
+  <default><geom type="box" size=".12 .1 .05" mass="1" friction=".8 .01 .001"/></default>
+  <worldbody>
+    <geom name="floor" type="plane" size="2 2 .1" mass="0"/>
+    <body name="box1" pos="0 0 .08"><freejoint/><geom/></body>
+    <body name="box2" pos="0 0 .20"><freejoint/><geom/></body>
+    <body name="box3" pos="0 0 .32"><freejoint/><geom/></body>
+    <body name="box4" pos="0 0 .44"><freejoint/><geom/></body>
+    <body name="box5" pos="0 0 .56"><freejoint/><geom/></body>
+  </worldbody>
+</mujoco>

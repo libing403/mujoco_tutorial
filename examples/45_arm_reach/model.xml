@@ -1,0 +1,31 @@
+<mujoco model="7 DoF arm reach">
+  <option timestep="0.001" integrator="implicitfast"/>
+  <default>
+    <joint damping=".08" armature=".015" limited="true" range="-170 170"/>
+    <geom type="capsule" size=".035" mass=".7" rgba=".25 .35 .65 1"/>
+    <motor ctrlrange="-35 35" ctrllimited="true"/>
+  </default>
+  <worldbody>
+    <body name="base" pos="0 0 .5">
+      <joint name="j1" axis="0 0 1"/><geom fromto="0 0 0 .22 0 0"/>
+      <body pos=".22 0 0"><joint name="j2" axis="0 1 0"/><geom fromto="0 0 0 .22 0 0"/>
+        <body pos=".22 0 0"><joint name="j3" axis="0 1 0"/><geom fromto="0 0 0 .22 0 0"/>
+          <body pos=".22 0 0"><joint name="j4" axis="1 0 0"/><geom fromto="0 0 0 .20 0 0"/>
+            <body pos=".20 0 0"><joint name="j5" axis="0 1 0"/><geom fromto="0 0 0 .18 0 0"/>
+              <body pos=".18 0 0"><joint name="j6" axis="1 0 0"/><geom fromto="0 0 0 .16 0 0"/>
+                <body pos=".16 0 0"><joint name="j7" axis="0 0 1"/><geom fromto="0 0 0 .14 0 0"/>
+                  <site name="tcp" pos=".14 0 0" size=".025" rgba="0 1 0 1"/>
+                </body>
+              </body>
+            </body>
+          </body>
+        </body>
+      </body>
+    </body>
+    <site name="target" pos=".95 .35 .75" size=".035" rgba="1 0 0 1"/>
+  </worldbody>
+  <actuator>
+    <motor joint="j1"/><motor joint="j2"/><motor joint="j3"/><motor joint="j4"/>
+    <motor joint="j5"/><motor joint="j6"/><motor joint="j7"/>
+  </actuator>
+</mujoco>

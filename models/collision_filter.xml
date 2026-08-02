@@ -1,0 +1,10 @@
+<mujoco model="collision_filter">
+  <option timestep="0.002"/>
+  <worldbody>
+    <geom name="floor" type="plane" size="2 2 .1" contype="1" conaffinity="3"/>
+    <body name="red" pos="-.2 0 1"><freejoint/><geom name="red_geom" type="sphere" size=".1" mass="1" contype="2" conaffinity="1" rgba="1 .2 .2 1"/></body>
+    <body name="blue" pos=".2 0 1"><freejoint/><geom name="blue_geom" type="sphere" size=".1" mass="1" contype="4" conaffinity="1" rgba=".2 .2 1 1"/></body>
+  </worldbody>
+  <contact><exclude body1="red" body2="blue"/></contact>
+</mujoco>
+

@@ -1,0 +1,14 @@
+<mujoco model="visual_collision_layers">
+  <option timestep="0.002"/>
+  <worldbody>
+    <geom name="floor" type="plane" size="2 2 .1"/>
+    <body name="ball" pos="0 0 1">
+      <freejoint/>
+      <geom name="visual_shell" type="sphere" size=".105" density="0"
+            group="2" contype="0" conaffinity="0" rgba=".2 .4 1 1"/>
+      <geom name="collision_core" type="sphere" size=".1" mass="1"
+            group="3" rgba="1 .2 .2 .25"/>
+    </body>
+  </worldbody>
+</mujoco>
+

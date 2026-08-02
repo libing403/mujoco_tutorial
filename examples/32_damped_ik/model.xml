@@ -1,0 +1,15 @@
+<mujoco model="damped IK">
+  <option gravity="0 0 0"/>
+  <worldbody>
+    <body>
+      <joint axis="0 0 1"/>
+      <geom type="capsule" fromto="0 0 0 .5 0 0" size=".025"/>
+      <body pos=".5 0 0">
+        <joint axis="0 0 1"/>
+        <geom type="capsule" fromto="0 0 0 .4 0 0" size=".025"/>
+        <site name="tcp" pos=".4 0 0" size=".025"/>
+      </body>
+    </body>
+    <site name="target" pos=".55 .45 0" type="sphere" size=".03" rgba="1 0 0 1"/>
+  </worldbody>
+</mujoco>

@@ -1,0 +1,11 @@
+<mujoco model="EKF pendulum">
+  <option timestep="0.005" integrator="implicitfast"/>
+  <worldbody>
+    <body>
+      <joint name="hinge" axis="0 1 0" damping=".08" armature=".02"/>
+      <geom type="capsule" fromto="0 0 0 0 0 -.5" size=".035" mass="1"/>
+    </body>
+  </worldbody>
+  <actuator><motor joint="hinge"/></actuator>
+  <sensor><jointpos joint="hinge"/></sensor>
+</mujoco>

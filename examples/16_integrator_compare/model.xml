@@ -1,0 +1,10 @@
+<mujoco model="conservative_pendulum">
+  <option timestep="0.002" gravity="0 0 -9.81"/>
+  <worldbody>
+    <body pos="0 0 1.2">
+      <joint name="hinge" axis="0 1 0"/>
+      <geom type="capsule" fromto="0 0 0 0 0 -1" size="0.03" mass="1"/>
+    </body>
+  </worldbody>
+</mujoco>
+

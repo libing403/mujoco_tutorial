@@ -1,0 +1,22 @@
+<mujoco model="tendon_coupling">
+  <compiler angle="radian"/>
+  <option timestep="0.001"/>
+  <worldbody>
+    <body pos="0 0 1">
+      <joint name="joint1" axis="0 1 0" damping=".1"/>
+      <geom type="capsule" fromto="0 0 0 0 0 -.4" size=".035" mass="1"/>
+      <body pos="0 0 -.4">
+        <joint name="joint2" axis="0 1 0" damping=".1"/>
+        <geom type="capsule" fromto="0 0 0 0 0 -.35" size=".03" mass=".7"/>
+      </body>
+    </body>
+  </worldbody>
+  <tendon>
+    <fixed name="differential" limited="true" range="-.8 .8" stiffness="20" damping="1">
+      <joint joint="joint1" coef="1"/><joint joint="joint2" coef="-1"/>
+    </fixed>
+  </tendon>
+  <actuator><motor name="tendon_motor" tendon="differential" gear="1"/></actuator>
+  <sensor><tendonpos name="differential_position" tendon="differential"/><tendonvel name="differential_velocity" tendon="differential"/></sensor>
+</mujoco>
+
