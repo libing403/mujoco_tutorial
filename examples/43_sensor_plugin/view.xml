@@ -1,8 +1,8 @@
-<mujoco model="sensor plugin geometry">
+<mujoco model="calibrated encoder geometry">
   <worldbody>
     <light pos="0 -2 3"/>
     <body pos="0 0 .8">
-      <joint name="hinge" axis="0 1 0"/>
+      <joint name="hinge" axis="0 1 0" damping=".1"/>
       <geom type="capsule" fromto="0 0 0 0 0 -.4" size=".03"
             rgba=".3 .7 .9 1"/>
     </body>

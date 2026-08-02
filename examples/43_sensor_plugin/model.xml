@@ -1,10 +1,22 @@
-<mujoco model="sensor plugin">
-  <extension><plugin plugin="book.sensor.state"/></extension>
+<mujoco model="calibrated encoder plugin">
+  <option timestep="0.002"/>
+  <extension>
+    <plugin plugin="book.sensor.calibrated_joint">
+      <instance name="encoder_calibration">
+        <config key="gain" value="57.2957795"/>
+        <config key="offset" value="1.5"/>
+      </instance>
+    </plugin>
+  </extension>
   <worldbody>
-    <body>
-      <joint name="hinge" axis="0 1 0"/>
-      <geom type="capsule" fromto="0 0 0 0 0 -.4" size=".03"/>
+    <light pos="0 -2 3"/>
+    <body pos="0 0 .8">
+      <joint name="hinge" axis="0 1 0" damping=".1"/>
+      <geom type="capsule" fromto="0 0 0 0 0 -.4" size=".03"
+            mass="1" rgba=".3 .7 .9 1"/>
     </body>
   </worldbody>
-  <sensor><plugin name="time_and_angle" plugin="book.sensor.state"/></sensor>
+  <sensor>
+    <plugin name="joint_encoder" instance="encoder_calibration"/>
+  </sensor>
 </mujoco>
