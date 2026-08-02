@@ -140,6 +140,109 @@ cmake --build build
 
 在这个没有 damping 和其他速度相关力的单摆中，Euler 与 implicitfast 的结果会相同，因为后者没有可隐式处理的速度 Jacobian；这正好说明积分器差异依赖模型，不能脱离动力学结构比较名称。
 
+<!-- EMBEDDED_EXAMPLE_BEGIN: 16_integrator_compare -->
+### 可视化运行与效果
+
+```bash
+../../mujoco-3.11.0/bin/simulate model.xml
+```
+
+该命令使用发布包自带的官方 `simulate` 界面，可暂停、单步、施加扰动并开启接触等可视化标志。
+
+![16_integrator_compare 实验运行效果](../assets/experiments/16_integrator_compare.png)
+
+*16_integrator_compare 的真实 MuJoCo 原生渲染结果。*
+
+### 实验完整源码
+
+以下文件与 `examples/16_integrator_compare/` 中可直接编译的版本一致。
+
+#### 模型文件：`model.xml`
+
+```xml
+<mujoco model="conservative_pendulum">
+  <option timestep="0.002" gravity="0 0 -9.81"/>
+  <worldbody>
+    <body pos="0 0 1.2">
+      <joint name="hinge" axis="0 1 0"/>
+      <geom type="capsule" fromto="0 0 0 0 0 -1" size="0.03" mass="1"/>
+    </body>
+  </worldbody>
+</mujoco>
+```
+
+#### 程序源码：`main.cc`
+
+```cpp
+#include <cstdio>
+#include <cstdlib>
+#include <mujoco/mujoco.h>
+
+int main(int argc, char** argv) {
+  if (argc != 2) {
+    std::fprintf(stderr, "用法: %s model.xml\n", argv[0]);
+    return EXIT_FAILURE;
+  }
+  char error[1024] = {0};
+  mjModel* m = mj_loadXML(argv[1], NULL, error, sizeof(error));
+  if (!m) {
+    std::fprintf(stderr, "无法加载 %s:\n%s\n", argv[1], error);
+    return EXIT_FAILURE;
+  }
+  mjData* d = mj_makeData(m);
+
+  const int integrator[] = {mjINT_EULER, mjINT_IMPLICITFAST, mjINT_RK4};
+  const char* name[] = {"Euler", "implicitfast", "RK4"};
+  const mjtNum timestep[] = {0.0005, 0.002, 0.01};
+  std::printf("%-13s %8s %13s %11s %11s\n",
+              "integrator", "h", "max |dE|", "q(5s)", "v(5s)");
+
+  for (int a = 0; a < 3; ++a) {
+    for (int b = 0; b < 3; ++b) {
+      m->opt.integrator = integrator[a];
+      m->opt.timestep = timestep[b];
+      mj_resetData(m, d);
+      d->qpos[0] = 0.8;
+      mj_forward(m, d);
+      mj_energyPos(m, d);
+      mj_energyVel(m, d);
+      mjtNum energy0 = d->energy[0] + d->energy[1];
+      mjtNum max_drift = 0;
+      while (d->time < 5.0) {
+        mj_step(m, d);
+        mj_energyPos(m, d);
+        mj_energyVel(m, d);
+        mjtNum drift = mju_abs(d->energy[0] + d->energy[1] - energy0);
+        max_drift = mju_max(max_drift, drift);
+      }
+      std::printf("%-13s %8.4g %13.6g %11.6f %11.6f\n",
+                  name[a], timestep[b], max_drift, d->qpos[0], d->qvel[0]);
+    }
+  }
+
+  mj_deleteData(d);
+  mj_deleteModel(m);
+  return EXIT_SUCCESS;
+}
+```
+
+#### 构建文件：`CMakeLists.txt`
+
+```cmake
+cmake_minimum_required(VERSION 3.16)
+project(16_integrator_compare LANGUAGES CXX)
+
+set(CMAKE_CXX_STANDARD 17)
+add_executable(demo main.cc)
+
+set(MUJOCO_ROOT ${CMAKE_CURRENT_LIST_DIR}/../../mujoco-3.11.0)
+target_include_directories(demo PRIVATE ${MUJOCO_ROOT}/include)
+target_link_directories(demo PRIVATE ${MUJOCO_ROOT}/lib)
+target_link_libraries(demo PRIVATE mujoco)
+set_target_properties(demo PROPERTIES BUILD_RPATH ${MUJOCO_ROOT}/lib)
+```
+<!-- EMBEDDED_EXAMPLE_END: 16_integrator_compare -->
+
 ## 5.8 时间步收敛实验
 
 真实机器人没有解析解时，可以用更小步长解作为参考。设任务指标为 `J(h)`，依次计算：

@@ -173,6 +173,100 @@ qfrc_inverse = (2.917618, -0.405867)
 
 第一个关节承受两个 link 的重力影响，第二个只承受末端子树，因此力矩幅值和符号不同。
 
+<!-- EMBEDDED_EXAMPLE_BEGIN: 06_inverse_dynamics -->
+### 可视化运行与效果
+
+```bash
+../../mujoco-3.11.0/bin/simulate model.xml
+```
+
+该命令使用发布包自带的官方 `simulate` 界面，可暂停、单步、施加扰动并开启接触等可视化标志。
+
+![06_inverse_dynamics 实验运行效果](../assets/experiments/06_inverse_dynamics.png)
+
+*06_inverse_dynamics 的真实 MuJoCo 原生渲染结果。*
+
+### 实验完整源码
+
+以下文件与 `examples/06_inverse_dynamics/` 中可直接编译的版本一致。
+
+#### 模型文件：`model.xml`
+
+```xml
+<mujoco model="two_link_arm">
+  <compiler angle="radian"/>
+  <option timestep="0.001" gravity="0 0 -9.81" integrator="implicitfast"/>
+  <default>
+    <joint axis="0 1 0" damping="0.2" limited="true" range="-3.14 3.14"/>
+    <geom type="capsule" size="0.04" rgba="0.25 0.55 0.85 1"/>
+    <motor ctrllimited="true" ctrlrange="-100 100"/>
+  </default>
+  <worldbody>
+    <body name="upper" pos="0 0 1">
+      <joint name="shoulder"/>
+      <geom fromto="0 0 0 0 0 -0.5" mass="1.0"/>
+      <body name="forearm" pos="0 0 -0.5">
+        <joint name="elbow"/>
+        <geom fromto="0 0 0 0 0 -0.4" mass="0.7"/>
+        <site name="tool" pos="0 0 -0.4" size="0.025" rgba="1 0.2 0.1 1"/>
+      </body>
+    </body>
+  </worldbody>
+  <actuator>
+    <motor name="shoulder_motor" joint="shoulder" gear="1"/>
+    <motor name="elbow_motor" joint="elbow" gear="1"/>
+  </actuator>
+</mujoco>
+```
+
+#### 程序源码：`main.cc`
+
+```cpp
+#include <cstdio>
+#include <cstdlib>
+#include <mujoco/mujoco.h>
+
+int main(int argc, char** argv) {
+  if (argc != 2) {
+    std::fprintf(stderr, "用法: %s model.xml\n", argv[0]);
+    return EXIT_FAILURE;
+  }
+  char error[1024] = {0};
+  mjModel* m = mj_loadXML(argv[1], NULL, error, sizeof(error));
+  if (!m) {
+    std::fprintf(stderr, "无法加载 %s:\n%s\n", argv[1], error);
+    return EXIT_FAILURE;
+  }
+  mjData* d = mj_makeData(m);
+  d->qpos[0] = 0.6; d->qpos[1] = -0.9;
+  mju_zero(d->qvel, m->nv);
+  mju_zero(d->qacc, m->nv);
+  mj_inverse(m, d);
+  std::printf("保持静止所需广义力 qfrc_inverse:");
+  for (int i = 0; i < m->nv; ++i) std::printf(" % .6f", d->qfrc_inverse[i]);
+  std::printf("\n");
+  mj_deleteData(d); mj_deleteModel(m);
+  return EXIT_SUCCESS;
+}
+```
+
+#### 构建文件：`CMakeLists.txt`
+
+```cmake
+cmake_minimum_required(VERSION 3.16)
+project(06_inverse_dynamics LANGUAGES CXX)
+
+set(CMAKE_CXX_STANDARD 17)
+add_executable(demo main.cc)
+
+set(MUJOCO_ROOT ${CMAKE_CURRENT_LIST_DIR}/../../mujoco-3.11.0)
+target_include_directories(demo PRIVATE ${MUJOCO_ROOT}/include)
+target_link_directories(demo PRIVATE ${MUJOCO_ROOT}/lib)
+target_link_libraries(demo PRIVATE mujoco)
+set_target_properties(demo PROPERTIES BUILD_RPATH ${MUJOCO_ROOT}/lib)
+```
+<!-- EMBEDDED_EXAMPLE_END: 06_inverse_dynamics -->
+
 ## 16.10 从广义力到 actuator control
 
 逆动力学给 `τ_des∈R^nv`，actuator 通过 moment matrix B 映射：
@@ -210,6 +304,101 @@ cmake --build build
 模型含重力和 joint damping，因此恢复成功说明 inverse 正确处理了 M、bias 和 passive，而不是简单计算 `M*qacc`。
 
 程序还调用 `mj_compareFwdInv` 或直接报告残差，用当前版本实际结果建立回归基线。
+
+<!-- EMBEDDED_EXAMPLE_BEGIN: 26_forward_inverse -->
+### 可视化运行与效果
+
+```bash
+../../mujoco-3.11.0/bin/simulate model.xml
+```
+
+该命令使用发布包自带的官方 `simulate` 界面，可暂停、单步、施加扰动并开启接触等可视化标志。
+
+![26_forward_inverse 实验运行效果](../assets/experiments/26_forward_inverse.png)
+
+*26_forward_inverse 的真实 MuJoCo 原生渲染结果。*
+
+### 实验完整源码
+
+以下文件与 `examples/26_forward_inverse/` 中可直接编译的版本一致。
+
+#### 模型文件：`model.xml`
+
+```xml
+<mujoco model="forward_inverse_two_link">
+  <compiler angle="radian"/>
+  <option gravity="0 0 -9.81"/>
+  <worldbody>
+    <body pos="0 0 1">
+      <joint name="shoulder" axis="0 1 0" damping=".2"/>
+      <geom type="capsule" fromto="0 0 0 0 0 -.5" size=".04" mass="1"/>
+      <body pos="0 0 -.5">
+        <joint name="elbow" axis="0 1 0" damping=".1"/>
+        <geom type="capsule" fromto="0 0 0 0 0 -.4" size=".035" mass=".7"/>
+      </body>
+    </body>
+  </worldbody>
+</mujoco>
+```
+
+#### 程序源码：`main.cc`
+
+```cpp
+#include <cstdio>
+#include <cstdlib>
+#include <mujoco/mujoco.h>
+
+int main(int argc, char** argv) {
+  if (argc != 2) {
+    std::fprintf(stderr, "用法: %s model.xml\n", argv[0]);
+    return EXIT_FAILURE;
+  }
+  char error[1024] = {0};
+  mjModel* m = mj_loadXML(argv[1], NULL, error, sizeof(error));
+  if (!m) {
+    std::fprintf(stderr, "无法加载 %s:\n%s\n", argv[1], error);
+    return EXIT_FAILURE;
+  }
+  mjData* d = mj_makeData(m);
+  d->qpos[0] = 0.4; d->qpos[1] = -0.7;
+  d->qvel[0] = 0.8; d->qvel[1] = -0.3;
+  d->qfrc_applied[0] = 1.2;
+  d->qfrc_applied[1] = -0.4;
+  mj_forward(m, d);
+  mjtNum acceleration[2] = {d->qacc[0], d->qacc[1]};
+
+  mj_inverse(m, d);
+  mjtNum residual[2] = {
+    d->qfrc_inverse[0] - d->qfrc_applied[0],
+    d->qfrc_inverse[1] - d->qfrc_applied[1]
+  };
+  std::printf("forward qacc = (% .9f, % .9f)\n", acceleration[0], acceleration[1]);
+  std::printf("applied force = (% .9f, % .9f)\n", d->qfrc_applied[0], d->qfrc_applied[1]);
+  std::printf("inverse force = (% .9f, % .9f)\n", d->qfrc_inverse[0], d->qfrc_inverse[1]);
+  std::printf("residual norm = %.3g\n", mju_norm(residual, 2));
+
+  mj_deleteData(d);
+  mj_deleteModel(m);
+  return mju_norm(residual, 2) < 1e-10 ? EXIT_SUCCESS : EXIT_FAILURE;
+}
+```
+
+#### 构建文件：`CMakeLists.txt`
+
+```cmake
+cmake_minimum_required(VERSION 3.16)
+project(26_forward_inverse LANGUAGES CXX)
+
+set(CMAKE_CXX_STANDARD 17)
+add_executable(demo main.cc)
+
+set(MUJOCO_ROOT ${CMAKE_CURRENT_LIST_DIR}/../../mujoco-3.11.0)
+target_include_directories(demo PRIVATE ${MUJOCO_ROOT}/include)
+target_link_directories(demo PRIVATE ${MUJOCO_ROOT}/lib)
+target_link_libraries(demo PRIVATE mujoco)
+set_target_properties(demo PROPERTIES BUILD_RPATH ${MUJOCO_ROOT}/lib)
+```
+<!-- EMBEDDED_EXAMPLE_END: 26_forward_inverse -->
 
 ## 16.12 forward–inverse 不一致来源
 
@@ -316,4 +505,3 @@ M\dot v+c=S^T\tau+J_c^Tf,
 3. free base 是欠驱动 DOF，没有关节 actuator；基座动力学只能通过重力、接触和内部关节作用间接满足。
 4. solver iteration/tolerance、模型条件、constraint/contact 参数、warmstart 和 forward warning；先确保 forward 约束充分收敛。
 5. 前馈模型误差会留下加速度/力误差，PD 等反馈根据实际状态纠正；但反馈也受饱和和带宽限制。
-

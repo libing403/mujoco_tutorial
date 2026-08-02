@@ -162,6 +162,116 @@ cmake --build build
 
 通常 hard 接触 penetration 更小、冲击峰值更尖；soft 接触变形更大、峰值较缓。精确数值依 timestep、solimp 和 solver，程序输出才是该版本/模型的证据。
 
+<!-- EMBEDDED_EXAMPLE_BEGIN: 27_contact_softness -->
+### 可视化运行与效果
+
+```bash
+../../mujoco-3.11.0/bin/simulate model.xml
+```
+
+该命令使用发布包自带的官方 `simulate` 界面，可暂停、单步、施加扰动并开启接触等可视化标志。
+
+![27_contact_softness 实验运行效果](../assets/experiments/27_contact_softness.png)
+
+*27_contact_softness 的真实 MuJoCo 原生渲染结果。*
+
+### 实验完整源码
+
+以下文件与 `examples/27_contact_softness/` 中可直接编译的版本一致。
+
+#### 模型文件：`model.xml`
+
+```xml
+<mujoco model="contact_softness">
+  <option timestep="0.001"/>
+  <worldbody>
+    <geom name="floor" type="plane" size="2 2 .1" contype="0" conaffinity="0"/>
+    <body name="soft_body" pos="-.3 0 1">
+      <freejoint/><geom name="soft_ball" type="sphere" size=".1" mass="1" contype="0" conaffinity="0" rgba=".2 .5 1 1"/>
+    </body>
+    <body name="hard_body" pos=".3 0 1">
+      <freejoint/><geom name="hard_ball" type="sphere" size=".1" mass="1" contype="0" conaffinity="0" rgba="1 .3 .2 1"/>
+    </body>
+  </worldbody>
+  <contact>
+    <pair geom1="floor" geom2="soft_ball" solref=".08 1"/>
+    <pair geom1="floor" geom2="hard_ball" solref=".008 1"/>
+  </contact>
+</mujoco>
+```
+
+#### 程序源码：`main.cc`
+
+```cpp
+#include <cstdio>
+#include <cstdlib>
+#include <limits>
+#include <mujoco/mujoco.h>
+
+int main(int argc, char** argv) {
+  if (argc != 2) {
+    std::fprintf(stderr, "用法: %s model.xml\n", argv[0]);
+    return EXIT_FAILURE;
+  }
+  char error[1024] = {0};
+  mjModel* m = mj_loadXML(argv[1], NULL, error, sizeof(error));
+  if (!m) {
+    std::fprintf(stderr, "无法加载 %s:\n%s\n", argv[1], error);
+    return EXIT_FAILURE;
+  }
+  mjData* d = mj_makeData(m);
+  int soft_geom = mj_name2id(m, mjOBJ_GEOM, "soft_ball");
+  int hard_geom = mj_name2id(m, mjOBJ_GEOM, "hard_ball");
+  int soft_body = mj_name2id(m, mjOBJ_BODY, "soft_body");
+  int hard_body = mj_name2id(m, mjOBJ_BODY, "hard_body");
+  mjtNum min_dist[2] = {std::numeric_limits<mjtNum>::infinity(),
+                        std::numeric_limits<mjtNum>::infinity()};
+  mjtNum max_force[2] = {0, 0};
+
+  while (d->time < 2.0) {
+    mj_step(m, d);
+    for (int i = 0; i < d->ncon; ++i) {
+      int g1 = d->contact[i].geom[0], g2 = d->contact[i].geom[1];
+      int which = (g1 == soft_geom || g2 == soft_geom) ? 0 :
+                  (g1 == hard_geom || g2 == hard_geom) ? 1 : -1;
+      if (which >= 0) {
+        mjtNum wrench[6];
+        mj_contactForce(m, d, i, wrench);
+        min_dist[which] = mju_min(min_dist[which], d->contact[i].dist);
+        max_force[which] = mju_max(max_force[which], wrench[0]);
+      }
+    }
+  }
+
+  std::printf("type   min_contact_dist   peak_normal_force   final_center_z   final_vz\n");
+  std::printf("soft   % .9f       % .6f          %.9f      % .3g\n",
+              min_dist[0], max_force[0], d->xpos[3*soft_body+2], d->qvel[2]);
+  std::printf("hard   % .9f       % .6f          %.9f      % .3g\n",
+              min_dist[1], max_force[1], d->xpos[3*hard_body+2], d->qvel[8]);
+
+  mj_deleteData(d);
+  mj_deleteModel(m);
+  return EXIT_SUCCESS;
+}
+```
+
+#### 构建文件：`CMakeLists.txt`
+
+```cmake
+cmake_minimum_required(VERSION 3.16)
+project(27_contact_softness LANGUAGES CXX)
+
+set(CMAKE_CXX_STANDARD 17)
+add_executable(demo main.cc)
+
+set(MUJOCO_ROOT ${CMAKE_CURRENT_LIST_DIR}/../../mujoco-3.11.0)
+target_include_directories(demo PRIVATE ${MUJOCO_ROOT}/include)
+target_link_directories(demo PRIVATE ${MUJOCO_ROOT}/lib)
+target_link_libraries(demo PRIVATE mujoco)
+set_target_properties(demo PROPERTIES BUILD_RPATH ${MUJOCO_ROOT}/lib)
+```
+<!-- EMBEDDED_EXAMPLE_END: 27_contact_softness -->
+
 ## 17.11 反弹与 restitution
 
 接触是否反弹由相对速度、solref 阻尼/时间常数、阻抗和积分共同决定。MuJoCo 不需要单独的传统 restitution coefficient 才能产生恢复行为；参考加速度可配置速度相关反弹。
@@ -263,4 +373,3 @@ time constant 相对 timestep 过小会请求引擎在一个离散步内完成�
 3. solref 描述残差希望以何种时间常数/阻尼恢复，solimp 描述约束相对自由动力学的作用强度及随误差变化。
 4. 不一定。要与机构公差/任务精度比较，并检查约束力、动态峰值、solver 残差和 timestep 收敛。
 5. 先用刚性 leg/单球标定接触力—位移，再在无接触或已知接触条件下测 joint torque—deflection；最后组合验证。
-

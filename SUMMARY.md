@@ -45,7 +45,7 @@
   - [第 35 章 生产部署、生态互操作与版本迁移](chapters/35_production_ecosystem.md)
 - 第七篇　综合项目
   - [第 36 章 7-DoF 机械臂从模型审计到任务空间控制](chapters/36_arm_project.md)
-  - [第 37 章 浮动基双足的站立平衡](chapters/37_humanoid_project.md)
+  - [第 37 章 Unitree G1 人形机器人站立审计](chapters/37_humanoid_project.md)
   - [第 38 章 验证、回归与 sim-to-real 交付](chapters/38_verification.md)
 - 附录
   - [附录 A C API、数组形状与生命周期速查](chapters/appendix_api.md)

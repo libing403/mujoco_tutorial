@@ -137,6 +137,134 @@ cmake --build build -j
 
 把目标改为 `(1.1, 0)`，超过 0.9 m 最大臂展，观察算法不会“报错退出”，而是停在最接近配置并保留不可消除残差。这是迭代优化器的正常行为，应用层必须自行定义可达性阈值。
 
+<!-- EMBEDDED_EXAMPLE_BEGIN: 32_damped_ik -->
+### 可视化运行与效果
+
+```bash
+./build/demo model.xml --view
+```
+
+窗口显示的是示例算法正在修改和推进的同一个 `mjData`。源码有意不封装 viewer：先用 GLFW 创建 OpenGL context，再初始化 `mjvScene/mjrContext`，用 `mjv_updateScene`读取算法使用的 `mjData`，再调用 `mjr_render` 和交换缓冲区，最后按创建的逆序释放资源。
+
+![32_damped_ik 实验运行效果](../assets/experiments/32_damped_ik.png)
+
+*32_damped_ik 的真实 MuJoCo 原生渲染结果。*
+
+### 实验完整源码
+
+以下文件与 `examples/32_damped_ik/` 中可直接编译的版本一致。
+
+#### 模型文件：`model.xml`
+
+```xml
+<mujoco model="damped IK">
+  <option gravity="0 0 0"/>
+  <worldbody>
+    <body>
+      <joint axis="0 0 1"/>
+      <geom type="capsule" fromto="0 0 0 .5 0 0" size=".025"/>
+      <body pos=".5 0 0">
+        <joint axis="0 0 1"/>
+        <geom type="capsule" fromto="0 0 0 .4 0 0" size=".025"/>
+        <site name="tcp" pos=".4 0 0" size=".025"/>
+      </body>
+    </body>
+    <site name="target" pos=".55 .45 0" type="sphere" size=".03" rgba="1 0 0 1"/>
+  </worldbody>
+</mujoco>
+```
+
+#### 程序源码：`main.cc`
+
+```cpp
+#include <cmath>
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
+#define GLFW_INCLUDE_NONE
+#include <GLFW/glfw3.h>
+#include <mujoco/mujoco.h>
+
+int main(int argc, char** argv) {
+  bool view=argc==3 && std::strcmp(argv[2],"--view")==0;
+  if (argc<2 || argc>3 || (argc==3 && !view)) {
+    std::fprintf(stderr,"\u7528\u6cd5: %s model.xml [--view]\n",argv[0]); return 1;
+  }
+  char error[1024] = {0};
+  mjModel* m = mj_loadXML(argv[1], NULL, error, sizeof(error));
+  if (!m) { std::fprintf(stderr, "%s\n", error); return 1; }
+  mjData* d = mj_makeData(m);
+  int tcp = mj_name2id(m, mjOBJ_SITE, "tcp");
+  int target = mj_name2id(m, mjOBJ_SITE, "target");
+  const double lambda2 = 0.02*0.02;
+
+  for (int iter = 0; iter < 100; ++iter) {
+    mj_forward(m, d);
+    double e[2] = {d->site_xpos[3*target]-d->site_xpos[3*tcp],
+                   d->site_xpos[3*target+1]-d->site_xpos[3*tcp+1]};
+    if (std::hypot(e[0], e[1]) < 1e-9) break;
+    mjtNum jp[6], jr[6];
+    mj_jacSite(m, d, jp, jr, tcp);
+    double a = jp[0]*jp[0] + jp[1]*jp[1] + lambda2;
+    double b = jp[0]*jp[2] + jp[1]*jp[3];
+    double c = jp[2]*jp[2] + jp[3]*jp[3] + lambda2;
+    double det = a*c-b*b;
+    double y[2] = {(c*e[0]-b*e[1])/det, (-b*e[0]+a*e[1])/det};
+    mjtNum dq[2] = {jp[0]*y[0]+jp[2]*y[1], jp[1]*y[0]+jp[3]*y[1]};
+    double norm = std::hypot(dq[0], dq[1]);
+    double step = norm > 0.2 ? 0.2/norm : 1.0;
+    mj_integratePos(m, d->qpos, dq, step);
+  }
+  mj_forward(m, d);
+  double ex = d->site_xpos[3*target]-d->site_xpos[3*tcp];
+  double ey = d->site_xpos[3*target+1]-d->site_xpos[3*tcp+1];
+  std::printf("q = [% .9f, % .9f]\n", d->qpos[0], d->qpos[1]);
+  std::printf("tcp = [%.9f, %.9f], target = [%.9f, %.9f]\n",
+              d->site_xpos[3*tcp], d->site_xpos[3*tcp+1],
+              d->site_xpos[3*target], d->site_xpos[3*target+1]);
+  std::printf("position error = %.3g m\n", std::hypot(ex, ey));
+  if (view) {
+    if (!glfwInit()) return 1;
+    GLFWwindow* window=glfwCreateWindow(900,700,"32 damped IK",NULL,NULL);
+    if (!window) { glfwTerminate(); return 1; }
+    glfwMakeContextCurrent(window);
+    mjvCamera cam; mjv_defaultCamera(&cam); mjv_defaultFreeCamera(m,&cam);
+    mjvOption opt; mjv_defaultOption(&opt); opt.flags[mjVIS_JOINT]=1;
+    mjvScene scene; mjv_defaultScene(&scene); mjv_makeScene(m,&scene,1000);
+    mjrContext con; mjr_defaultContext(&con); mjr_makeContext(m,&con,mjFONTSCALE_150);
+    while (!glfwWindowShouldClose(window)) {
+      int width,height; glfwGetFramebufferSize(window,&width,&height);
+      mjrRect viewport={0,0,width,height};
+      mjv_updateScene(m,d,&opt,NULL,&cam,mjCAT_ALL,&scene);
+      mjr_render(viewport,&scene,&con);
+      mjr_overlay(mjFONT_NORMAL,mjGRID_TOPLEFT,viewport,
+                  "Damped least-squares IK","TCP reaches the red target",&con);
+      glfwSwapBuffers(window); glfwPollEvents();
+    }
+    mjr_freeContext(&con); mjv_freeScene(&scene);
+    glfwDestroyWindow(window); glfwTerminate();
+  }
+  mj_deleteData(d); mj_deleteModel(m); return 0;
+}
+```
+
+#### 构建文件：`CMakeLists.txt`
+
+```cmake
+cmake_minimum_required(VERSION 3.16)
+project(32_damped_ik LANGUAGES CXX)
+
+set(CMAKE_CXX_STANDARD 17)
+add_executable(demo main.cc)
+
+set(MUJOCO_ROOT ${CMAKE_CURRENT_LIST_DIR}/../../mujoco-3.11.0)
+target_include_directories(demo PRIVATE ${MUJOCO_ROOT}/include ${MUJOCO_ROOT}/third_party/glfw/include)
+target_link_directories(demo PRIVATE ${MUJOCO_ROOT}/lib ${MUJOCO_ROOT}/third_party/glfw/lib)
+target_link_libraries(demo PRIVATE mujoco glfw)
+set_target_properties(demo PROPERTIES BUILD_RPATH "${MUJOCO_ROOT}/lib;${MUJOCO_ROOT}/third_party/glfw/lib")
+```
+<!-- EMBEDDED_EXAMPLE_END: 32_damped_ik -->
+
 ## 22.10 故障诊断
 
 - 误差前几轮下降、随后上升：步长过大，使用 line search 或限幅；

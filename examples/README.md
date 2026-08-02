@@ -49,7 +49,7 @@
 | `43_sensor_plugin` | 自定义二维传感器 | engine plugin 生命周期 | 输出仿真时间和关节角 |
 | `44_vfs_model` | 内存 MJCF | `mjVFS`、buffer loading | 不访问模型文件完成仿真 |
 | `45_arm_reach` | 7-DoF 冗余机械臂 | DLS、`mj_mulM`、bias、限幅 | 任务空间到达综合验收 |
-| `46_biped_standing` | 浮动基 10-DoF 双足 | free state、CoM、双脚 wrench | 站立 plant/sensor 综合审计 |
+| `46_biped_standing` | Unitree G1 29-DoF | 开源模型审计、CoM、8 点足底 wrench | 验证躯干、关节、支撑力与支撑区域 |
 
 仓库根目录 `models/` 另外保留 tendon、equality、actuator 和 collision filter 等进阶模型素材。
 
@@ -61,3 +61,19 @@ cmake --build build -j
 ```
 
 没有 `enable_testing()`：运行结果本身就是实验观察对象。
+
+## 打开可视化
+
+普通模型实验在当前示例目录直接运行官方界面：
+
+```bash
+../../mujoco-3.11.0/bin/simulate model.xml
+```
+
+`03_pd_control`、`08_split_step`、`32_damped_ik`、`37_ekf_pendulum`、`45_arm_reach` 和 `46_biped_standing` 需要显示 C++ 算法产生的状态，因此使用程序自带的原生 viewer：
+
+```bash
+./build/demo model.xml --view
+```
+
+viewer 源码就在各自的 `main.cc` 中，没有共享封装。`38_mjspec_build`、`43_sensor_plugin` 和 `44_vfs_model` 的 `view.xml` 只用于向 `simulate` 展示程序化/插件模型的几何外观；数值实验仍由 `main.cc` 构造真实模型。

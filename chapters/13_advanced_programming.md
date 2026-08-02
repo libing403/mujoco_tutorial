@@ -234,6 +234,277 @@ cmake --build build
 
 它不是通用静态分析器，而是展示“模型接口契约应变成可执行检查”。真实项目应把预期 body/joint/sensor 列表和质量范围写入版本化配置。
 
+### 配套实验：用 `mj_step1/mj_step2` 显式插入控制器
+
+`examples/08_split_step` 把一个仿真步拆成两阶段：先刷新位姿和传感器，再根据当前状态写入控制量并完成动力学。
+
+```bash
+cd examples/08_split_step
+cmake -S . -B build
+cmake --build build
+./build/demo model.xml
+```
+
+<!-- EMBEDDED_EXAMPLE_BEGIN: 08_split_step -->
+### 可视化运行与效果
+
+```bash
+./build/demo model.xml --view
+```
+
+窗口显示的是示例算法正在修改和推进的同一个 `mjData`。源码有意不封装 viewer：先用 GLFW 创建 OpenGL context，再初始化 `mjvScene/mjrContext`，用 `mjv_updateScene`读取算法使用的 `mjData`，再调用 `mjr_render` 和交换缓冲区，最后按创建的逆序释放资源。
+
+![08_split_step 实验运行效果](../assets/experiments/08_split_step.png)
+
+*08_split_step 的真实 MuJoCo 原生渲染结果。*
+
+### 实验完整源码
+
+以下文件与 `examples/08_split_step/` 中可直接编译的版本一致。
+
+#### 模型文件：`model.xml`
+
+```xml
+<mujoco model="two_link_arm">
+  <compiler angle="radian"/>
+  <option timestep="0.001" gravity="0 0 -9.81" integrator="implicitfast"/>
+  <default>
+    <joint axis="0 1 0" damping="0.2" limited="true" range="-3.14 3.14"/>
+    <geom type="capsule" size="0.04" rgba="0.25 0.55 0.85 1"/>
+    <motor ctrllimited="true" ctrlrange="-100 100"/>
+  </default>
+  <worldbody>
+    <body name="upper" pos="0 0 1">
+      <joint name="shoulder"/>
+      <geom fromto="0 0 0 0 0 -0.5" mass="1.0"/>
+      <body name="forearm" pos="0 0 -0.5">
+        <joint name="elbow"/>
+        <geom fromto="0 0 0 0 0 -0.4" mass="0.7"/>
+        <site name="tool" pos="0 0 -0.4" size="0.025" rgba="1 0.2 0.1 1"/>
+      </body>
+    </body>
+  </worldbody>
+  <actuator>
+    <motor name="shoulder_motor" joint="shoulder" gear="1"/>
+    <motor name="elbow_motor" joint="elbow" gear="1"/>
+  </actuator>
+</mujoco>
+```
+
+#### 程序源码：`main.cc`
+
+```cpp
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
+#define GLFW_INCLUDE_NONE
+#include <GLFW/glfw3.h>
+#include <mujoco/mujoco.h>
+
+int main(int argc, char** argv) {
+  bool view = argc == 3 && std::strcmp(argv[2], "--view") == 0;
+  if (argc < 2 || argc > 3 || (argc == 3 && !view)) {
+    std::fprintf(stderr, "用法: %s model.xml [--view]\n", argv[0]);
+    return EXIT_FAILURE;
+  }
+  char error[1024] = {0};
+  mjModel* m = mj_loadXML(argv[1], NULL, error, sizeof(error));
+  if (!m) {
+    std::fprintf(stderr, "无法加载 %s:\n%s\n", argv[1], error);
+    return EXIT_FAILURE;
+  }
+  mjData* d = mj_makeData(m);
+  const mjtNum target[2] = {0.5, -0.8};
+
+  while (d->time < 1.0) {
+    mj_step1(m, d);  // 此时最新的运动学和速度派生量可供控制器读取
+    for (int i = 0; i < m->nu && i < 2; ++i) {
+      d->ctrl[i] = 60*(target[i]-d->qpos[i]) - 6*d->qvel[i];
+    }
+    mj_step2(m, d);
+  }
+  std::printf("split-step final q=(%.5f %.5f), time=%.3f\n",
+              d->qpos[0], d->qpos[1], d->time);
+  if (view) {
+    if (!glfwInit()) return EXIT_FAILURE;
+    GLFWwindow* window=glfwCreateWindow(900,700,"08 split step",NULL,NULL);
+    if (!window) { glfwTerminate(); return EXIT_FAILURE; }
+    glfwMakeContextCurrent(window);
+    mjvCamera cam; mjv_defaultCamera(&cam); mjv_defaultFreeCamera(m,&cam);
+    mjvOption opt; mjv_defaultOption(&opt);
+    mjvScene scene; mjv_defaultScene(&scene); mjv_makeScene(m,&scene,1000);
+    mjrContext con; mjr_defaultContext(&con); mjr_makeContext(m,&con,mjFONTSCALE_150);
+    while (!glfwWindowShouldClose(window)) {
+      int width,height; glfwGetFramebufferSize(window,&width,&height);
+      mjrRect viewport={0,0,width,height};
+      mjv_updateScene(m,d,&opt,NULL,&cam,mjCAT_ALL,&scene);
+      mjr_render(viewport,&scene,&con);
+      mjr_overlay(mjFONT_NORMAL,mjGRID_TOPLEFT,viewport,
+                  "mj_step1 / controller / mj_step2","final controlled pose",&con);
+      glfwSwapBuffers(window); glfwPollEvents();
+    }
+    mjr_freeContext(&con); mjv_freeScene(&scene);
+    glfwDestroyWindow(window); glfwTerminate();
+  }
+  mj_deleteData(d); mj_deleteModel(m);
+  return EXIT_SUCCESS;
+}
+```
+
+#### 构建文件：`CMakeLists.txt`
+
+```cmake
+cmake_minimum_required(VERSION 3.16)
+project(08_split_step LANGUAGES CXX)
+
+set(CMAKE_CXX_STANDARD 17)
+add_executable(demo main.cc)
+
+set(MUJOCO_ROOT ${CMAKE_CURRENT_LIST_DIR}/../../mujoco-3.11.0)
+target_include_directories(demo PRIVATE ${MUJOCO_ROOT}/include ${MUJOCO_ROOT}/third_party/glfw/include)
+target_link_directories(demo PRIVATE ${MUJOCO_ROOT}/lib ${MUJOCO_ROOT}/third_party/glfw/lib)
+target_link_libraries(demo PRIVATE mujoco glfw)
+set_target_properties(demo PROPERTIES BUILD_RPATH "${MUJOCO_ROOT}/lib;${MUJOCO_ROOT}/third_party/glfw/lib")
+```
+<!-- EMBEDDED_EXAMPLE_END: 08_split_step -->
+
+<!-- EMBEDDED_EXAMPLE_BEGIN: 23_model_audit -->
+### 可视化运行与效果
+
+```bash
+../../mujoco-3.11.0/bin/simulate model.xml
+```
+
+该命令使用发布包自带的官方 `simulate` 界面，可暂停、单步、施加扰动并开启接触等可视化标志。
+
+![23_model_audit 实验运行效果](../assets/experiments/23_model_audit.png)
+
+*23_model_audit 的真实 MuJoCo 原生渲染结果。*
+
+### 实验完整源码
+
+以下文件与 `examples/23_model_audit/` 中可直接编译的版本一致。
+
+#### 模型文件：`model.xml`
+
+```xml
+<mujoco model="floating_biped_lite">
+  <compiler angle="radian"/>
+  <option timestep="0.002"/>
+  <default>
+    <joint type="hinge" axis="0 1 0" limited="true" range="-1.5 1.5" damping=".2"/>
+    <geom type="capsule" size=".04" rgba=".3 .5 .8 1"/>
+    <motor ctrlrange="-50 50" ctrllimited="true"/>
+  </default>
+  <worldbody>
+    <geom name="floor" type="plane" size="2 2 .1"/>
+    <body name="torso" pos="0 0 1.1">
+      <freejoint name="base"/>
+      <geom type="box" size=".15 .10 .20" mass="8"/>
+      <body name="left_thigh" pos="0 .09 -.2">
+        <joint name="left_hip"/><geom fromto="0 0 0 0 0 -.3" mass="2"/>
+        <body name="left_shin" pos="0 0 -.3">
+          <joint name="left_knee" range="0 2.4"/><geom fromto="0 0 0 0 0 -.3" mass="1.5"/>
+          <site name="left_foot" pos="0 0 -.34" size=".03"/>
+        </body>
+      </body>
+      <body name="right_thigh" pos="0 -.09 -.2">
+        <joint name="right_hip"/><geom fromto="0 0 0 0 0 -.3" mass="2"/>
+        <body name="right_shin" pos="0 0 -.3">
+          <joint name="right_knee" range="0 2.4"/><geom fromto="0 0 0 0 0 -.3" mass="1.5"/>
+          <site name="right_foot" pos="0 0 -.34" size=".03"/>
+        </body>
+      </body>
+    </body>
+  </worldbody>
+  <actuator>
+    <motor name="left_hip_motor" joint="left_hip"/>
+    <motor name="left_knee_motor" joint="left_knee"/>
+    <motor name="right_hip_motor" joint="right_hip"/>
+    <motor name="right_knee_motor" joint="right_knee"/>
+  </actuator>
+</mujoco>
+```
+
+#### 程序源码：`main.cc`
+
+```cpp
+#include <cstdio>
+#include <cstdlib>
+#include <mujoco/mujoco.h>
+
+int main(int argc, char** argv) {
+  if (argc != 2) {
+    std::fprintf(stderr, "用法: %s model.xml\n", argv[0]);
+    return EXIT_FAILURE;
+  }
+  char error[1024] = {0};
+  mjModel* m = mj_loadXML(argv[1], NULL, error, sizeof(error));
+  if (!m) {
+    std::fprintf(stderr, "无法加载 %s:\n%s\n", argv[1], error);
+    return EXIT_FAILURE;
+  }
+  mjData* d = mj_makeData(m);
+  int failures = 0;
+  std::printf("nbody=%lld njnt=%lld nq=%lld nv=%lld nu=%lld\n",
+              (long long)m->nbody, (long long)m->njnt,
+              (long long)m->nq, (long long)m->nv, (long long)m->nu);
+  if (m->nq - m->nv != 1) { std::printf("FAIL: expected one free-base quaternion redundancy\n"); ++failures; }
+
+  mjtNum total_mass = 0;
+  for (int b = 1; b < m->nbody; ++b) {
+    mjtNum mass = m->body_mass[b];
+    const mjtNum* I = m->body_inertia + 3*b;
+    const char* name = mj_id2name(m, mjOBJ_BODY, b);
+    bool valid = mass > 0 && I[0] > 0 && I[1] > 0 && I[2] > 0 &&
+                 I[0]+I[1] >= I[2] && I[0]+I[2] >= I[1] && I[1]+I[2] >= I[0];
+    std::printf("body %-12s mass=%5.2f inertia=(%.4f %.4f %.4f) %s\n",
+                name, mass, I[0], I[1], I[2], valid ? "OK" : "FAIL");
+    total_mass += mass;
+    if (!valid) ++failures;
+  }
+  std::printf("total moving-body mass = %.3f kg\n", total_mass);
+
+  for (int j = 0; j < m->njnt; ++j) {
+    const char* name = mj_id2name(m, mjOBJ_JOINT, j);
+    std::printf("joint %-12s type=%d qadr=%d dadr=%d",
+                name, m->jnt_type[j], m->jnt_qposadr[j], m->jnt_dofadr[j]);
+    if (m->jnt_limited[j]) std::printf(" range=[%.2f %.2f]", m->jnt_range[2*j], m->jnt_range[2*j+1]);
+    std::printf("\n");
+  }
+
+  mj_forward(m, d);
+  int torso = mj_name2id(m, mjOBJ_BODY, "torso");
+  int left = mj_name2id(m, mjOBJ_SITE, "left_foot");
+  int right = mj_name2id(m, mjOBJ_SITE, "right_foot");
+  std::printf("torso subtree COM=(%.3f %.3f %.3f)\n",
+              d->subtree_com[3*torso], d->subtree_com[3*torso+1], d->subtree_com[3*torso+2]);
+  std::printf("feet z: left=%.3f right=%.3f\n", d->site_xpos[3*left+2], d->site_xpos[3*right+2]);
+  std::printf("audit result: %s\n", failures ? "FAIL" : "PASS");
+
+  mj_deleteData(d);
+  mj_deleteModel(m);
+  return failures ? EXIT_FAILURE : EXIT_SUCCESS;
+}
+```
+
+#### 构建文件：`CMakeLists.txt`
+
+```cmake
+cmake_minimum_required(VERSION 3.16)
+project(23_model_audit LANGUAGES CXX)
+
+set(CMAKE_CXX_STANDARD 17)
+add_executable(demo main.cc)
+
+set(MUJOCO_ROOT ${CMAKE_CURRENT_LIST_DIR}/../../mujoco-3.11.0)
+target_include_directories(demo PRIVATE ${MUJOCO_ROOT}/include)
+target_link_directories(demo PRIVATE ${MUJOCO_ROOT}/lib)
+target_link_libraries(demo PRIVATE mujoco)
+set_target_properties(demo PROPERTIES BUILD_RPATH ${MUJOCO_ROOT}/lib)
+```
+<!-- EMBEDDED_EXAMPLE_END: 23_model_audit -->
+
 ## 13.15 模块化 MJCF 结构
 
 推荐把“机器人”和“场景”解耦：
@@ -338,4 +609,3 @@ Menagerie 提供双足、人形、四足、机械臂、手、夹爪、无人机�
 3. URDF/MJCF 编译时的 angle 语义、源数据是否 degree/radian、ref 和运行时 API 单位都可能不同；需单关节数值/几何验证。
 4. 对每个 actuator 读取 transmission target/单位 ctrl 后的 qfrc_actuator，确认只有目标 DOF 出现正确符号和幅值，并验证名称、type 和地址。
 5. 上游仓库 URL、commit/tag、模型与资产许可证、MuJoCo 最低版本；本地对惯量、碰撞、actuator、sensor、keyframe、solver 和资产路径的全部修改及其验证结果。
-

@@ -1,10 +1,16 @@
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
+#define GLFW_INCLUDE_NONE
+#include <GLFW/glfw3.h>
 #include <mujoco/mujoco.h>
 
 int main(int argc, char** argv) {
-  if (argc != 2) { std::fprintf(stderr, "用法: %s model.xml\n", argv[0]); return 1; }
+  bool view=argc==3 && std::strcmp(argv[2],"--view")==0;
+  if (argc<2 || argc>3 || (argc==3 && !view)) {
+    std::fprintf(stderr,"\u7528\u6cd5: %s model.xml [--view]\n",argv[0]); return 1;
+  }
   char error[1024] = {0};
   mjModel* m = mj_loadXML(argv[1], NULL, error, sizeof(error));
   if (!m) { std::fprintf(stderr, "%s\n", error); return 1; }
@@ -38,5 +44,26 @@ int main(int argc, char** argv) {
               d->site_xpos[3*tcp], d->site_xpos[3*tcp+1],
               d->site_xpos[3*target], d->site_xpos[3*target+1]);
   std::printf("position error = %.3g m\n", std::hypot(ex, ey));
+  if (view) {
+    if (!glfwInit()) return 1;
+    GLFWwindow* window=glfwCreateWindow(900,700,"32 damped IK",NULL,NULL);
+    if (!window) { glfwTerminate(); return 1; }
+    glfwMakeContextCurrent(window);
+    mjvCamera cam; mjv_defaultCamera(&cam); mjv_defaultFreeCamera(m,&cam);
+    mjvOption opt; mjv_defaultOption(&opt); opt.flags[mjVIS_JOINT]=1;
+    mjvScene scene; mjv_defaultScene(&scene); mjv_makeScene(m,&scene,1000);
+    mjrContext con; mjr_defaultContext(&con); mjr_makeContext(m,&con,mjFONTSCALE_150);
+    while (!glfwWindowShouldClose(window)) {
+      int width,height; glfwGetFramebufferSize(window,&width,&height);
+      mjrRect viewport={0,0,width,height};
+      mjv_updateScene(m,d,&opt,NULL,&cam,mjCAT_ALL,&scene);
+      mjr_render(viewport,&scene,&con);
+      mjr_overlay(mjFONT_NORMAL,mjGRID_TOPLEFT,viewport,
+                  "Damped least-squares IK","TCP reaches the red target",&con);
+      glfwSwapBuffers(window); glfwPollEvents();
+    }
+    mjr_freeContext(&con); mjv_freeScene(&scene);
+    glfwDestroyWindow(window); glfwTerminate();
+  }
   mj_deleteData(d); mj_deleteModel(m); return 0;
 }

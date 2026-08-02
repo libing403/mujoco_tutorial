@@ -113,6 +113,115 @@ cmake --build build -j
 
 程序输出 RMS joint error 和峰值 torque。对比必须同时看误差与控制代价：把力矩无限增大换来的小误差不是更好的工程方案。
 
+<!-- EMBEDDED_EXAMPLE_BEGIN: 34_computed_torque -->
+### 可视化运行与效果
+
+```bash
+../../mujoco-3.11.0/bin/simulate model.xml
+```
+
+该命令使用发布包自带的官方 `simulate` 界面，可暂停、单步、施加扰动并开启接触等可视化标志。
+
+![34_computed_torque 实验运行效果](../assets/experiments/34_computed_torque.png)
+
+*34_computed_torque 的真实 MuJoCo 原生渲染结果。*
+
+### 实验完整源码
+
+以下文件与 `examples/34_computed_torque/` 中可直接编译的版本一致。
+
+#### 模型文件：`model.xml`
+
+```xml
+<mujoco model="computed torque">
+  <option timestep="0.001" integrator="implicitfast"/>
+  <worldbody>
+    <body>
+      <joint name="q1" axis="0 1 0" damping=".05" armature=".01"/>
+      <geom type="capsule" fromto="0 0 0 .5 0 0" size=".035" mass="2"/>
+      <body pos=".5 0 0">
+        <joint name="q2" axis="0 1 0" damping=".04" armature=".01"/>
+        <geom type="capsule" fromto="0 0 0 .4 0 0" size=".03" mass="1"/>
+      </body>
+    </body>
+  </worldbody>
+  <actuator>
+    <motor joint="q1" ctrlrange="-30 30" ctrllimited="true"/>
+    <motor joint="q2" ctrlrange="-30 30" ctrllimited="true"/>
+  </actuator>
+</mujoco>
+```
+
+#### 程序源码：`main.cc`
+
+```cpp
+#include <cmath>
+#include <cstdio>
+#include <cstdlib>
+#include <mujoco/mujoco.h>
+
+struct Result { double rms, peak_torque; };
+
+Result run(const mjModel* m, bool computed) {
+  mjData* d = mj_makeData(m);
+  mj_forward(m, d);
+  double sum2 = 0, peak = 0;
+  const int steps = 5000;
+  for (int k = 0; k < steps; ++k) {
+    double t = d->time, qd[2] = {0.6*std::sin(1.5*t), -0.5*std::sin(1.5*t)};
+    double vd[2] = {0.9*std::cos(1.5*t), -0.75*std::cos(1.5*t)};
+    double ad[2] = {-1.35*std::sin(1.5*t), 1.125*std::sin(1.5*t)};
+    mjtNum tau[2];
+    if (computed) {
+      mjtNum desired_acc[2];
+      for (int j = 0; j < 2; ++j)
+        desired_acc[j] = ad[j] + 80*(qd[j]-d->qpos[j]) + 18*(vd[j]-d->qvel[j]);
+      mj_mulM(m, d, tau, desired_acc);
+      for (int j = 0; j < 2; ++j) tau[j] += d->qfrc_bias[j];
+    } else {
+      for (int j = 0; j < 2; ++j)
+        tau[j] = 8*(qd[j]-d->qpos[j]) + 1.8*(vd[j]-d->qvel[j]);
+    }
+    for (int j = 0; j < 2; ++j) {
+      d->ctrl[j] = mju_clip(tau[j], -30.0, 30.0);
+      peak = mju_max(peak, std::fabs(d->ctrl[j]));
+      double e = qd[j]-d->qpos[j]; sum2 += e*e;
+    }
+    mj_step(m, d);
+  }
+  Result r{std::sqrt(sum2/(2*steps)), peak};
+  mj_deleteData(d); return r;
+}
+
+int main(int argc, char** argv) {
+  if (argc != 2) { std::fprintf(stderr, "用法: %s model.xml\n", argv[0]); return 1; }
+  char error[1024] = {0};
+  mjModel* m = mj_loadXML(argv[1], NULL, error, sizeof(error));
+  if (!m) { std::fprintf(stderr, "%s\n", error); return 1; }
+  Result pd = run(m, false), ct = run(m, true);
+  std::printf("torque PD:       RMS error = %.6f rad, peak torque = %.3f Nm\n", pd.rms, pd.peak_torque);
+  std::printf("computed torque: RMS error = %.6f rad, peak torque = %.3f Nm\n", ct.rms, ct.peak_torque);
+  mj_deleteModel(m); return 0;
+}
+```
+
+#### 构建文件：`CMakeLists.txt`
+
+```cmake
+cmake_minimum_required(VERSION 3.16)
+project(34_computed_torque LANGUAGES CXX)
+
+set(CMAKE_CXX_STANDARD 17)
+add_executable(demo main.cc)
+
+set(MUJOCO_ROOT ${CMAKE_CURRENT_LIST_DIR}/../../mujoco-3.11.0)
+target_include_directories(demo PRIVATE ${MUJOCO_ROOT}/include)
+target_link_directories(demo PRIVATE ${MUJOCO_ROOT}/lib)
+target_link_libraries(demo PRIVATE mujoco)
+set_target_properties(demo PROPERTIES BUILD_RPATH ${MUJOCO_ROOT}/lib)
+```
+<!-- EMBEDDED_EXAMPLE_END: 34_computed_torque -->
+
 ## 24.8 操作空间控制预告
 
 若任务定义在末端，可以设计期望 wrench

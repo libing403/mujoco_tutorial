@@ -165,6 +165,119 @@ cmake --build build
 
 实验 B 重置后，对 plain 和 armature 同施 1 N·m、持续 0.2 s。armature joint 的速度明显更小，展示反射惯量而非耗散。
 
+<!-- EMBEDDED_EXAMPLE_BEGIN: 19_joint_passive -->
+### 可视化运行与效果
+
+```bash
+../../mujoco-3.11.0/bin/simulate model.xml
+```
+
+该命令使用发布包自带的官方 `simulate` 界面，可暂停、单步、施加扰动并开启接触等可视化标志。
+
+![19_joint_passive 实验运行效果](../assets/experiments/19_joint_passive.png)
+
+*19_joint_passive 的真实 MuJoCo 原生渲染结果。*
+
+### 实验完整源码
+
+以下文件与 `examples/19_joint_passive/` 中可直接编译的版本一致。
+
+#### 模型文件：`model.xml`
+
+```xml
+<mujoco model="joint_passive_bench">
+  <compiler angle="radian"/>
+  <option timestep="0.001" gravity="0 0 0" integrator="implicitfast"/>
+  <default>
+    <joint axis="0 1 0"/>
+    <geom type="capsule" fromto="0 0 0 0 0 -.4" size=".03" mass="1" contype="0" conaffinity="0"/>
+  </default>
+  <worldbody>
+    <body pos="-1 0 1"><joint name="plain"/><geom/></body>
+    <body pos="-.5 0 1"><joint name="damped" damping="1"/><geom/></body>
+    <body pos="0 0 1"><joint name="dry" frictionloss=".5"/><geom/></body>
+    <body pos=".5 0 1"><joint name="spring" stiffness="5" springref="0"/><geom/></body>
+    <body pos="1 0 1"><joint name="armature" armature="1"/><geom/></body>
+  </worldbody>
+</mujoco>
+```
+
+#### 程序源码：`main.cc`
+
+```cpp
+#include <cstdio>
+#include <cstdlib>
+#include <mujoco/mujoco.h>
+
+int main(int argc, char** argv) {
+  if (argc != 2) {
+    std::fprintf(stderr, "用法: %s model.xml\n", argv[0]);
+    return EXIT_FAILURE;
+  }
+  char error[1024] = {0};
+  mjModel* m = mj_loadXML(argv[1], NULL, error, sizeof(error));
+  if (!m) {
+    std::fprintf(stderr, "无法加载 %s:\n%s\n", argv[1], error);
+    return EXIT_FAILURE;
+  }
+  mjData* d = mj_makeData(m);
+  const char* name[] = {"plain", "damped", "dry", "spring", "armature"};
+  int qadr[5], dadr[5];
+  for (int i = 0; i < 5; ++i) {
+    int joint = mj_name2id(m, mjOBJ_JOINT, name[i]);
+    qadr[i] = m->jnt_qposadr[joint];
+    dadr[i] = m->jnt_dofadr[joint];
+  }
+
+  for (int i = 0; i < 4; ++i) {
+    d->qpos[qadr[i]] = 0.5;
+    d->qvel[dadr[i]] = 1.0;
+  }
+  mj_forward(m, d);
+  const mjtNum sample_time[] = {0.02, 0.2, 2.0};
+  std::printf("free decay velocities:\n");
+  std::printf("  %6s %10s %10s %10s %10s\n",
+              "time", "plain", "damped", "dry", "spring");
+  for (int s = 0; s < 3; ++s) {
+    while (d->time < sample_time[s]) mj_step(m, d);
+    std::printf("  %6.2f %10.6f %10.6f %10.6f %10.6f\n",
+                d->time, d->qvel[dadr[0]], d->qvel[dadr[1]],
+                d->qvel[dadr[2]], d->qvel[dadr[3]]);
+  }
+
+  mj_resetData(m, d);
+  while (d->time < 0.2) {
+    d->qfrc_applied[dadr[0]] = 1.0;
+    d->qfrc_applied[dadr[4]] = 1.0;
+    mj_step(m, d);
+  }
+  std::printf("same 1 N.m torque for 0.2 s:\n");
+  std::printf("  plain    v=% .6f\n", d->qvel[dadr[0]]);
+  std::printf("  armature v=% .6f\n", d->qvel[dadr[4]]);
+
+  mj_deleteData(d);
+  mj_deleteModel(m);
+  return EXIT_SUCCESS;
+}
+```
+
+#### 构建文件：`CMakeLists.txt`
+
+```cmake
+cmake_minimum_required(VERSION 3.16)
+project(19_joint_passive LANGUAGES CXX)
+
+set(CMAKE_CXX_STANDARD 17)
+add_executable(demo main.cc)
+
+set(MUJOCO_ROOT ${CMAKE_CURRENT_LIST_DIR}/../../mujoco-3.11.0)
+target_include_directories(demo PRIVATE ${MUJOCO_ROOT}/include)
+target_link_directories(demo PRIVATE ${MUJOCO_ROOT}/lib)
+target_link_libraries(demo PRIVATE mujoco)
+set_target_properties(demo PROPERTIES BUILD_RPATH ${MUJOCO_ROOT}/lib)
+```
+<!-- EMBEDDED_EXAMPLE_END: 19_joint_passive -->
+
 ## 8.10 参数辨识实验设计
 
 ### 估计 damping
@@ -246,4 +359,3 @@ timestep 必须足够解析最快重要动态。经验上每个周期只有几�
 3. 否。弹簧偏差是 `qpos-springref=0.4`；ref 只决定参考几何坐标关系。
 4. `ω_n=√(k/I)`，惯量越小自然频率越高，最快时间尺度越短。
 5. 分别查看 actuator 映射后的 `qfrc_actuator` 与约束系统中 limit 对应的 force/efc 数据，并做关闭 actuator 或扩大 range 的对照实验。
-

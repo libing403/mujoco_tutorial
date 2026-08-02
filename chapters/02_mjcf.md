@@ -192,6 +192,113 @@ free : qposadr=6, dofadr=5
 
 程序随后调用 `mj_integratePos` 给每个自由度施加一个小速度增量。MuJoCo 会在流形上更新并归一化四元数，输出范数仍应接近 1。
 
+<!-- EMBEDDED_EXAMPLE_BEGIN: 13_joint_types -->
+### 可视化运行与效果
+
+```bash
+../../mujoco-3.11.0/bin/simulate model.xml
+```
+
+该命令使用发布包自带的官方 `simulate` 界面，可暂停、单步、施加扰动并开启接触等可视化标志。
+
+![13_joint_types 实验运行效果](../assets/experiments/13_joint_types.png)
+
+*13_joint_types 的真实 MuJoCo 原生渲染结果。*
+
+### 实验完整源码
+
+以下文件与 `examples/13_joint_types/` 中可直接编译的版本一致。
+
+#### 模型文件：`model.xml`
+
+```xml
+<mujoco model="joint_types">
+  <compiler angle="radian"/>
+  <option gravity="0 0 0"/>
+  <worldbody>
+    <body name="hinge_body" pos="-1.5 0 1">
+      <joint name="hinge" type="hinge" axis="0 1 0"/>
+      <geom type="box" size=".12 .12 .12" mass="1"/>
+    </body>
+    <body name="slide_body" pos="-.5 0 1">
+      <joint name="slide" type="slide" axis="0 0 1"/>
+      <geom type="box" size=".12 .12 .12" mass="1"/>
+    </body>
+    <body name="ball_body" pos=".5 0 1">
+      <joint name="ball" type="ball"/>
+      <geom type="box" size=".12 .12 .12" mass="1"/>
+    </body>
+    <body name="free_body" pos="1.5 0 1">
+      <freejoint name="free"/>
+      <geom type="box" size=".12 .12 .12" mass="1"/>
+    </body>
+  </worldbody>
+</mujoco>
+```
+
+#### 程序源码：`main.cc`
+
+```cpp
+#include <cstdio>
+#include <cstdlib>
+#include <vector>
+#include <mujoco/mujoco.h>
+
+int main(int argc, char** argv) {
+  if (argc != 2) {
+    std::fprintf(stderr, "用法: %s model.xml\n", argv[0]);
+    return EXIT_FAILURE;
+  }
+  char error[1024] = {0};
+  mjModel* m = mj_loadXML(argv[1], NULL, error, sizeof(error));
+  if (!m) {
+    std::fprintf(stderr, "无法加载 %s:\n%s\n", argv[1], error);
+    return EXIT_FAILURE;
+  }
+  mjData* d = mj_makeData(m);
+
+  const char* type_name[] = {"free", "ball", "slide", "hinge"};
+  std::printf("njnt=%lld, nq=%lld, nv=%lld\n",
+              (long long)m->njnt, (long long)m->nq, (long long)m->nv);
+  for (int j = 0; j < m->njnt; ++j) {
+    const char* name = mj_id2name(m, mjOBJ_JOINT, j);
+    std::printf("%-6s type=%-5s qposadr=%d dofadr=%d\n",
+                name, type_name[m->jnt_type[j]],
+                m->jnt_qposadr[j], m->jnt_dofadr[j]);
+  }
+
+  std::vector<mjtNum> velocity(m->nv, 0.1);
+  mj_integratePos(m, d->qpos, velocity.data(), 0.01);
+  int ball = mj_name2id(m, mjOBJ_JOINT, "ball");
+  int free_joint = mj_name2id(m, mjOBJ_JOINT, "free");
+  int bq = m->jnt_qposadr[ball];
+  int fq = m->jnt_qposadr[free_joint] + 3;
+  std::printf("ball quaternion norm = %.12f\n", mju_norm(d->qpos+bq, 4));
+  std::printf("free quaternion norm = %.12f\n", mju_norm(d->qpos+fq, 4));
+
+  mj_deleteData(d);
+  mj_deleteModel(m);
+  return EXIT_SUCCESS;
+}
+```
+
+#### 构建文件：`CMakeLists.txt`
+
+```cmake
+cmake_minimum_required(VERSION 3.16)
+project(13_joint_types LANGUAGES CXX)
+
+set(CMAKE_CXX_STANDARD 17)
+add_executable(demo main.cc)
+
+set(MUJOCO_ROOT ${CMAKE_CURRENT_LIST_DIR}/../../mujoco-3.11.0)
+target_include_directories(demo PRIVATE ${MUJOCO_ROOT}/include)
+target_link_directories(demo PRIVATE ${MUJOCO_ROOT}/lib)
+target_link_libraries(demo PRIVATE mujoco)
+set_target_properties(demo PROPERTIES BUILD_RPATH ${MUJOCO_ROOT}/lib)
+```
+<!-- EMBEDDED_EXAMPLE_END: 13_joint_types -->
+
 ## 2.9 二连杆机械臂逐项建模
 
 打开 `examples/03_pd_control/model.xml`。它使用嵌套 body 建立两个 hinge：
@@ -204,6 +311,159 @@ free : qposadr=6, dofadr=5
 当 shoulder 旋转时，forearm 整棵子树跟随；elbow 再产生相对 upper 的旋转。这就是前向运动学的递归结构。
 
 `fromto` 很适合 capsule：两个端点直接给出轴线，编译器计算中心、长度和姿态。若用 `pos+quat`，更容易出现视觉杆件与关节轴错位。
+
+配套程序对两个关节执行最简单的 PD 控制，并打印关节位置和末端世界坐标。这使嵌套 body 的几何含义能用运行结果验证。
+
+```bash
+cd examples/03_pd_control
+cmake -S . -B build
+cmake --build build
+./build/demo model.xml
+```
+
+<!-- EMBEDDED_EXAMPLE_BEGIN: 03_pd_control -->
+### 可视化运行与效果
+
+```bash
+./build/demo model.xml --view
+```
+
+窗口显示的是示例算法正在修改和推进的同一个 `mjData`。源码有意不封装 viewer：先用 GLFW 创建 OpenGL context，再初始化 `mjvScene/mjrContext`，用 `mjv_updateScene`读取算法使用的 `mjData`，再调用 `mjr_render` 和交换缓冲区，最后按创建的逆序释放资源。
+
+![03_pd_control 实验运行效果](../assets/experiments/03_pd_control.png)
+
+*03_pd_control 的真实 MuJoCo 原生渲染结果。*
+
+### 实验完整源码
+
+以下文件与 `examples/03_pd_control/` 中可直接编译的版本一致。
+
+#### 模型文件：`model.xml`
+
+```xml
+<mujoco model="two_link_arm">
+  <compiler angle="radian"/>
+  <option timestep="0.001" gravity="0 0 -9.81" integrator="implicitfast"/>
+  <default>
+    <joint axis="0 1 0" damping="0.2" limited="true" range="-3.14 3.14"/>
+    <geom type="capsule" size="0.04" rgba="0.25 0.55 0.85 1"/>
+    <motor ctrllimited="true" ctrlrange="-100 100"/>
+  </default>
+  <worldbody>
+    <body name="upper" pos="0 0 1">
+      <joint name="shoulder"/>
+      <geom fromto="0 0 0 0 0 -0.5" mass="1.0"/>
+      <body name="forearm" pos="0 0 -0.5">
+        <joint name="elbow"/>
+        <geom fromto="0 0 0 0 0 -0.4" mass="0.7"/>
+        <site name="tool" pos="0 0 -0.4" size="0.025" rgba="1 0.2 0.1 1"/>
+      </body>
+    </body>
+  </worldbody>
+  <actuator>
+    <motor name="shoulder_motor" joint="shoulder" gear="1"/>
+    <motor name="elbow_motor" joint="elbow" gear="1"/>
+  </actuator>
+</mujoco>
+```
+
+#### 程序源码：`main.cc`
+
+```cpp
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
+#define GLFW_INCLUDE_NONE
+#include <GLFW/glfw3.h>
+#include <mujoco/mujoco.h>
+
+int main(int argc, char** argv) {
+  bool view = argc == 3 && std::strcmp(argv[2], "--view") == 0;
+  if (argc < 2 || argc > 3 || (argc == 3 && !view)) {
+    std::fprintf(stderr, "用法: %s model.xml [--view]\n", argv[0]);
+    return EXIT_FAILURE;
+  }
+  char error[1024] = {0};
+  mjModel* m = mj_loadXML(argv[1], NULL, error, sizeof(error));
+  if (!m) {
+    std::fprintf(stderr, "无法加载 %s:\n%s\n", argv[1], error);
+    return EXIT_FAILURE;
+  }
+  mjData* d = mj_makeData(m);
+  const mjtNum target[2] = {0.8, -1.1};
+  const mjtNum kp = 80.0, kd = 8.0;
+
+  GLFWwindow* window = nullptr;
+  mjvCamera cam; mjvOption opt; mjvScene scene; mjrContext con;
+  if (view) {
+    if (!glfwInit()) return EXIT_FAILURE;
+    window = glfwCreateWindow(900, 700, "03 PD control", nullptr, nullptr);
+    if (!window) { glfwTerminate(); return EXIT_FAILURE; }
+    glfwMakeContextCurrent(window);
+    glfwSwapInterval(1);
+    mjv_defaultCamera(&cam); mjv_defaultFreeCamera(m, &cam);
+    mjv_defaultOption(&opt);
+    mjv_defaultScene(&scene); mjv_makeScene(m, &scene, 1000);
+    mjr_defaultContext(&con); mjr_makeContext(m, &con, mjFONTSCALE_150);
+  }
+
+  while (d->time < 3.0 && (!view || !glfwWindowShouldClose(window))) {
+    mjtNum frame_start = d->time;
+    do {
+    for (int i = 0; i < 2; ++i) {
+      d->ctrl[i] = kp * (target[i] - d->qpos[i]) - kd * d->qvel[i];
+    }
+    mj_step(m, d);
+    } while (view && d->time-frame_start < 1.0/60.0);
+    if (view) {
+      int width, height; glfwGetFramebufferSize(window, &width, &height);
+      mjrRect viewport = {0, 0, width, height};
+      mjv_updateScene(m, d, &opt, nullptr, &cam, mjCAT_ALL, &scene);
+      mjr_render(viewport, &scene, &con);
+      mjr_overlay(mjFONT_NORMAL, mjGRID_TOPLEFT, viewport,
+                  "PD control", "target: (0.8, -1.1)", &con);
+      glfwSwapBuffers(window); glfwPollEvents();
+    }
+  }
+  std::printf("target=(%.3f %.3f) final=(%.3f %.3f) error=(%.4f %.4f)\n",
+              target[0], target[1], d->qpos[0], d->qpos[1],
+              target[0]-d->qpos[0], target[1]-d->qpos[1]);
+  while (view && !glfwWindowShouldClose(window)) {
+    int width, height; glfwGetFramebufferSize(window, &width, &height);
+    mjrRect viewport = {0, 0, width, height};
+    mjv_updateScene(m, d, &opt, nullptr, &cam, mjCAT_ALL, &scene);
+    mjr_render(viewport, &scene, &con);
+    mjr_overlay(mjFONT_NORMAL, mjGRID_TOPLEFT, viewport,
+                "PD control: finished", "close the window to exit", &con);
+    glfwSwapBuffers(window); glfwPollEvents();
+  }
+  if (view) {
+    mjr_freeContext(&con); mjv_freeScene(&scene);
+    glfwDestroyWindow(window); glfwTerminate();
+  }
+  mj_deleteData(d);
+  mj_deleteModel(m);
+  return EXIT_SUCCESS;
+}
+```
+
+#### 构建文件：`CMakeLists.txt`
+
+```cmake
+cmake_minimum_required(VERSION 3.16)
+project(03_pd_control LANGUAGES CXX)
+
+set(CMAKE_CXX_STANDARD 17)
+add_executable(demo main.cc)
+
+set(MUJOCO_ROOT ${CMAKE_CURRENT_LIST_DIR}/../../mujoco-3.11.0)
+target_include_directories(demo PRIVATE ${MUJOCO_ROOT}/include)
+target_include_directories(demo PRIVATE ${MUJOCO_ROOT}/third_party/glfw/include)
+target_link_directories(demo PRIVATE ${MUJOCO_ROOT}/lib ${MUJOCO_ROOT}/third_party/glfw/lib)
+target_link_libraries(demo PRIVATE mujoco glfw)
+set_target_properties(demo PROPERTIES BUILD_RPATH "${MUJOCO_ROOT}/lib;${MUJOCO_ROOT}/third_party/glfw/lib")
+```
+<!-- EMBEDDED_EXAMPLE_END: 03_pd_control -->
 
 ## 2.10 质量与惯量：看不见但决定一切
 
@@ -272,4 +532,3 @@ qvel = [base_linear_velocity(3), base_angular_velocity(3), joint_velocities...]
 3. 零四元数没有单位范数，不能表示旋转；应使用 `(1,0,0,0)` 表示单位旋转，或调用规范化/积分 API 生成合法状态。
 4. geom 和 site 的 body-relative 几何位置不变；质心世界位置、重力矩、质量矩阵和动响应会改变。
 5. 先取 `jid=mj_name2id(...,"elbow")`，再取 `qadr=m->jnt_qposadr[jid]`，写 `d->qpos[qadr]=30*mjPI/180`。
-

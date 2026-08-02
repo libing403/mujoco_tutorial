@@ -102,6 +102,110 @@ cmake --build build -j
 
 这是操作空间控制的最小前置实验：控制篇将反过来设计末端期望 wrench，再通过同一个转置映射驱动关节。
 
+<!-- EMBEDDED_EXAMPLE_BEGIN: 30_apply_force -->
+### 可视化运行与效果
+
+```bash
+../../mujoco-3.11.0/bin/simulate model.xml
+```
+
+该命令使用发布包自带的官方 `simulate` 界面，可暂停、单步、施加扰动并开启接触等可视化标志。
+
+![30_apply_force 实验运行效果](../assets/experiments/30_apply_force.png)
+
+*30_apply_force 的真实 MuJoCo 原生渲染结果。*
+
+### 实验完整源码
+
+以下文件与 `examples/30_apply_force/` 中可直接编译的版本一致。
+
+#### 模型文件：`model.xml`
+
+```xml
+<mujoco model="apply force">
+  <option gravity="0 0 0"/>
+  <worldbody>
+    <body name="link1">
+      <joint name="q1" axis="0 0 1"/>
+      <geom type="capsule" fromto="0 0 0  .5 0 0" size=".035" mass="1"/>
+      <body name="link2" pos=".5 0 0">
+        <joint name="q2" axis="0 0 1"/>
+        <geom type="capsule" fromto="0 0 0  .4 0 0" size=".03" mass=".7"/>
+        <site name="tcp" pos=".4 0 0" size=".02"/>
+      </body>
+    </body>
+  </worldbody>
+</mujoco>
+```
+
+#### 程序源码：`main.cc`
+
+```cpp
+#include <cmath>
+#include <cstdio>
+#include <cstdlib>
+#include <mujoco/mujoco.h>
+
+int main(int argc, char** argv) {
+  if (argc != 2) {
+    std::fprintf(stderr, "用法: %s model.xml\n", argv[0]);
+    return EXIT_FAILURE;
+  }
+  char error[1024] = {0};
+  mjModel* m = mj_loadXML(argv[1], NULL, error, sizeof(error));
+  if (!m) {
+    std::fprintf(stderr, "无法加载模型:\n%s\n", error);
+    return EXIT_FAILURE;
+  }
+  mjData* d = mj_makeData(m);
+  d->qpos[0] = 0.4;
+  d->qpos[1] = -0.7;
+  mj_forward(m, d);
+
+  int site = mj_name2id(m, mjOBJ_SITE, "tcp");
+  int body = m->site_bodyid[site];
+  const mjtNum force[3] = {3.0, -2.0, 1.0};
+  const mjtNum torque[3] = {0, 0, 0};
+  mjtNum from_api[2] = {0, 0};
+  mj_applyFT(m, d, force, torque, d->site_xpos + 3*site, body, from_api);
+
+  mjtNum jacp[6], jacr[6];
+  mj_jacSite(m, d, jacp, jacr, site);
+  mjtNum from_jacobian[2] = {0, 0};
+  for (int j = 0; j < m->nv; ++j)
+    for (int xyz = 0; xyz < 3; ++xyz)
+      from_jacobian[j] += jacp[xyz*m->nv+j] * force[xyz];
+
+  double max_error = 0;
+  for (int j = 0; j < m->nv; ++j) {
+    max_error = mju_max(max_error, std::fabs(from_api[j]-from_jacobian[j]));
+    std::printf("dof %d: mj_applyFT=% .9f  J^T f=% .9f\n",
+                j, from_api[j], from_jacobian[j]);
+  }
+  std::printf("max error = %.3g\n", max_error);
+  mj_deleteData(d);
+  mj_deleteModel(m);
+  return EXIT_SUCCESS;
+}
+```
+
+#### 构建文件：`CMakeLists.txt`
+
+```cmake
+cmake_minimum_required(VERSION 3.16)
+project(30_apply_force LANGUAGES CXX)
+
+set(CMAKE_CXX_STANDARD 17)
+add_executable(demo main.cc)
+
+set(MUJOCO_ROOT ${CMAKE_CURRENT_LIST_DIR}/../../mujoco-3.11.0)
+target_include_directories(demo PRIVATE ${MUJOCO_ROOT}/include)
+target_link_directories(demo PRIVATE ${MUJOCO_ROOT}/lib)
+target_link_libraries(demo PRIVATE mujoco)
+set_target_properties(demo PROPERTIES BUILD_RPATH ${MUJOCO_ROOT}/lib)
+```
+<!-- EMBEDDED_EXAMPLE_END: 30_apply_force -->
+
 ## 20.9 工程诊断与误区
 
 - 在相同 `qpos/qvel` 调用 `mj_forward`，分别打印各 `qfrc_*` 字段来审计力源；

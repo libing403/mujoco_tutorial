@@ -159,6 +159,117 @@ cmake --build build
 
 若这四项失败，应先检查 API 版本/布局和 forward 时序，再怀疑物理引擎。
 
+<!-- EMBEDDED_EXAMPLE_BEGIN: 25_mass_matrix_properties -->
+### 可视化运行与效果
+
+```bash
+../../mujoco-3.11.0/bin/simulate model.xml
+```
+
+该命令使用发布包自带的官方 `simulate` 界面，可暂停、单步、施加扰动并开启接触等可视化标志。
+
+![25_mass_matrix_properties 实验运行效果](../assets/experiments/25_mass_matrix_properties.png)
+
+*25_mass_matrix_properties 的真实 MuJoCo 原生渲染结果。*
+
+### 实验完整源码
+
+以下文件与 `examples/25_mass_matrix_properties/` 中可直接编译的版本一致。
+
+#### 模型文件：`model.xml`
+
+```xml
+<mujoco model="mass_matrix_two_link">
+  <compiler angle="radian"/>
+  <option gravity="0 0 -9.81"/>
+  <worldbody>
+    <body pos="0 0 1">
+      <joint name="shoulder" axis="0 1 0" armature=".02"/>
+      <geom type="capsule" fromto="0 0 0 0 0 -.5" size=".04" mass="1"/>
+      <body pos="0 0 -.5">
+        <joint name="elbow" axis="0 1 0" armature=".01"/>
+        <geom type="capsule" fromto="0 0 0 0 0 -.4" size=".035" mass=".7"/>
+      </body>
+    </body>
+  </worldbody>
+</mujoco>
+```
+
+#### 程序源码：`main.cc`
+
+```cpp
+#include <cstdio>
+#include <cstdlib>
+#include <vector>
+#include <mujoco/mujoco.h>
+
+int main(int argc, char** argv) {
+  if (argc != 2) {
+    std::fprintf(stderr, "用法: %s model.xml\n", argv[0]);
+    return EXIT_FAILURE;
+  }
+  char error[1024] = {0};
+  mjModel* m = mj_loadXML(argv[1], NULL, error, sizeof(error));
+  if (!m) {
+    std::fprintf(stderr, "无法加载 %s:\n%s\n", argv[1], error);
+    return EXIT_FAILURE;
+  }
+  mjData* d = mj_makeData(m);
+  d->qpos[0] = 0.4; d->qpos[1] = -0.7;
+  d->qvel[0] = 0.8; d->qvel[1] = -0.3;
+  mj_forward(m, d);
+
+  std::vector<mjtNum> M(m->nv*m->nv);
+  mj_fullM(m, d, M.data());
+  std::printf("M(q):\n");
+  for (int r = 0; r < m->nv; ++r) {
+    for (int c = 0; c < m->nv; ++c) std::printf(" % .9f", M[r*m->nv+c]);
+    std::printf("\n");
+  }
+  mjtNum symmetry = mju_abs(M[1]-M[2]);
+  mjtNum determinant = M[0]*M[3]-M[1]*M[2];
+
+  std::vector<mjtNum> Mv(m->nv);
+  mj_mulM(m, d, Mv.data(), d->qvel);
+  mjtNum kinetic_matrix = 0.5*mju_dot(d->qvel, Mv.data(), m->nv);
+  mj_energyVel(m, d);
+
+  mjtNum rhs[2] = {1.2, -0.4};
+  mjtNum solution[2], reconstructed[2];
+  mj_solveM(m, d, solution, rhs, 1);
+  mj_mulM(m, d, reconstructed, solution);
+  mjtNum residual[2] = {reconstructed[0]-rhs[0], reconstructed[1]-rhs[1]};
+
+  std::printf("symmetry error = %.3g, determinant = %.9f\n", symmetry, determinant);
+  std::printf("kinetic 0.5*vT*M*v = %.12f, mj_energyVel = %.12f, error = %.3g\n",
+              kinetic_matrix, d->energy[1], mju_abs(kinetic_matrix-d->energy[1]));
+  std::printf("solve residual norm = %.3g\n", mju_norm(residual, 2));
+
+  bool ok = symmetry < 1e-12 && M[0] > 0 && determinant > 0 &&
+            mju_abs(kinetic_matrix-d->energy[1]) < 1e-12 && mju_norm(residual, 2) < 1e-12;
+  mj_deleteData(d);
+  mj_deleteModel(m);
+  return ok ? EXIT_SUCCESS : EXIT_FAILURE;
+}
+```
+
+#### 构建文件：`CMakeLists.txt`
+
+```cmake
+cmake_minimum_required(VERSION 3.16)
+project(25_mass_matrix_properties LANGUAGES CXX)
+
+set(CMAKE_CXX_STANDARD 17)
+add_executable(demo main.cc)
+
+set(MUJOCO_ROOT ${CMAKE_CURRENT_LIST_DIR}/../../mujoco-3.11.0)
+target_include_directories(demo PRIVATE ${MUJOCO_ROOT}/include)
+target_link_directories(demo PRIVATE ${MUJOCO_ROOT}/lib)
+target_link_libraries(demo PRIVATE mujoco)
+set_target_properties(demo PROPERTIES BUILD_RPATH ${MUJOCO_ROOT}/lib)
+```
+<!-- EMBEDDED_EXAMPLE_END: 25_mass_matrix_properties -->
+
 ## 15.11 正定性与数值条件
 
 正定不代表条件良好。若最大/最小特征值比值很大：
@@ -275,4 +386,3 @@ M_{jb}&M_{jj}
 3. 对应 shoulder dof 的对角元素 `M_ii` 增加 0.2。
 4. qfrc_bias 随 q 和 v 变化，高速时含科氏/离心项；静态缓存既姿态旧又缺少当前速度效应。
 5. 是否先对当前 q 调 forward；rhs/solution 长度和多 RHS 布局；是否使用同一个 model/data；还应检查模型惯量条件和 NaN。
-

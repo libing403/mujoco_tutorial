@@ -110,6 +110,90 @@ cmake --build build -j
 
 下一章会将同一个 `mjvScene` 送入 renderer，生成离屏 RGB/depth。
 
+<!-- EMBEDDED_EXAMPLE_BEGIN: 41_abstract_scene -->
+### 可视化运行与效果
+
+```bash
+../../mujoco-3.11.0/bin/simulate model.xml
+```
+
+该命令使用发布包自带的官方 `simulate` 界面，可暂停、单步、施加扰动并开启接触等可视化标志。
+
+![41_abstract_scene 实验运行效果](../assets/experiments/41_abstract_scene.png)
+
+*41_abstract_scene 的真实 MuJoCo 原生渲染结果。*
+
+### 实验完整源码
+
+以下文件与 `examples/41_abstract_scene/` 中可直接编译的版本一致。
+
+#### 模型文件：`model.xml`
+
+```xml
+<mujoco model="abstract scene">
+  <worldbody>
+    <geom type="plane" size="2 2 .1"/>
+    <body name="ball" pos="0 0 .5">
+      <freejoint/>
+      <geom type="sphere" size=".12" mass="1" rgba=".2 .5 .9 1"/>
+    </body>
+  </worldbody>
+</mujoco>
+```
+
+#### 程序源码：`main.cc`
+
+```cpp
+#include <cstdio>
+#include <cstdlib>
+#include <mujoco/mujoco.h>
+
+int main(int argc, char** argv) {
+  if (argc != 2) { std::fprintf(stderr, "用法: %s model.xml\n", argv[0]); return 1; }
+  char error[1024] = {0}; mjModel* m = mj_loadXML(argv[1], NULL, error, sizeof(error));
+  if (!m) { std::fprintf(stderr, "%s\n", error); return 1; }
+  mjData* d = mj_makeData(m);
+  for (int k = 0; k < 500; ++k) mj_step(m, d);
+
+  mjvOption opt; mjv_defaultOption(&opt); opt.flags[mjVIS_CONTACTPOINT] = 1;
+  mjvCamera cam; mjv_defaultCamera(&cam);
+  cam.type = mjCAMERA_TRACKING; cam.trackbodyid = mj_name2id(m, mjOBJ_BODY, "ball");
+  cam.distance = 2; cam.azimuth = 90; cam.elevation = -20;
+  mjvScene scene; mjv_defaultScene(&scene); mjv_makeScene(m, &scene, 200);
+  mjv_updateScene(m, d, &opt, NULL, &cam, mjCAT_ALL, &scene);
+
+  int categories[3] = {0, 0, 0};
+  for (int i = 0; i < scene.ngeom; ++i) {
+    if (scene.geoms[i].category == mjCAT_STATIC) ++categories[0];
+    else if (scene.geoms[i].category == mjCAT_DYNAMIC) ++categories[1];
+    else if (scene.geoms[i].category == mjCAT_DECOR) ++categories[2];
+  }
+  mjtNum head[3], forward[3], up[3]; mjv_cameraInModel(head, forward, up, &scene);
+  std::printf("scene geoms=%d (static=%d dynamic=%d decor=%d), contacts=%d\n",
+              scene.ngeom, categories[0], categories[1], categories[2], d->ncon);
+  std::printf("camera head=[%.4f %.4f %.4f], forward=[%.4f %.4f %.4f]\n",
+              head[0], head[1], head[2], forward[0], forward[1], forward[2]);
+  mjv_freeScene(&scene); mj_deleteData(d); mj_deleteModel(m); return 0;
+}
+```
+
+#### 构建文件：`CMakeLists.txt`
+
+```cmake
+cmake_minimum_required(VERSION 3.16)
+project(41_abstract_scene LANGUAGES CXX)
+
+set(CMAKE_CXX_STANDARD 17)
+add_executable(demo main.cc)
+
+set(MUJOCO_ROOT ${CMAKE_CURRENT_LIST_DIR}/../../mujoco-3.11.0)
+target_include_directories(demo PRIVATE ${MUJOCO_ROOT}/include)
+target_link_directories(demo PRIVATE ${MUJOCO_ROOT}/lib)
+target_link_libraries(demo PRIVATE mujoco)
+set_target_properties(demo PROPERTIES BUILD_RPATH ${MUJOCO_ROOT}/lib)
+```
+<!-- EMBEDDED_EXAMPLE_END: 41_abstract_scene -->
+
 ## 31.10 线程架构
 
 physics 与 rendering 常在不同线程。安全模式是：physics thread 在同步点复制最小 physics state；render thread 将副本写入独立 render `mjData` 并 forward/update scene。不要一边 `mj_step` 同一 data，一边 `mjv_updateScene` 读取它。

@@ -144,6 +144,117 @@ cmake --build build -j
 
 程序刻意只有一个源码文件。请直接对照 `main.cc` 中 `frame` 的三个行向量和世界系求和代码，不需要先理解任何辅助框架。
 
+<!-- EMBEDDED_EXAMPLE_BEGIN: 28_contact_wrench -->
+### 可视化运行与效果
+
+```bash
+../../mujoco-3.11.0/bin/simulate model.xml
+```
+
+该命令使用发布包自带的官方 `simulate` 界面，可暂停、单步、施加扰动并开启接触等可视化标志。
+
+![28_contact_wrench 实验运行效果](../assets/experiments/28_contact_wrench.png)
+
+*28_contact_wrench 的真实 MuJoCo 原生渲染结果。*
+
+### 实验完整源码
+
+以下文件与 `examples/28_contact_wrench/` 中可直接编译的版本一致。
+
+#### 模型文件：`model.xml`
+
+```xml
+<mujoco model="contact wrench">
+  <option timestep="0.001" solver="Newton" cone="elliptic"/>
+  <worldbody>
+    <geom name="floor" type="plane" size="2 2 .1" friction="0.8 0.01 0.001"/>
+    <body name="box" pos="0 0 .4">
+      <freejoint/>
+      <geom name="box_geom" type="box" size=".12 .09 .06"
+            mass="2" friction="0.8 0.01 0.001" condim="3"/>
+    </body>
+  </worldbody>
+</mujoco>
+```
+
+#### 程序源码：`main.cc`
+
+```cpp
+#include <cmath>
+#include <cstdio>
+#include <cstdlib>
+#include <mujoco/mujoco.h>
+
+int main(int argc, char** argv) {
+  if (argc != 2) {
+    std::fprintf(stderr, "用法: %s model.xml\n", argv[0]);
+    return EXIT_FAILURE;
+  }
+  char error[1024] = {0};
+  mjModel* m = mj_loadXML(argv[1], NULL, error, sizeof(error));
+  if (!m) {
+    std::fprintf(stderr, "无法加载模型:\n%s\n", error);
+    return EXIT_FAILURE;
+  }
+  mjData* d = mj_makeData(m);
+  int box_body = mj_name2id(m, mjOBJ_BODY, "box");
+  int box_geom = mj_name2id(m, mjOBJ_GEOM, "box_geom");
+
+  while (d->time < 1.0) mj_step(m, d);       // 先让方块落稳
+  for (int k = 0; k < 500; ++k) {
+    d->xfrc_applied[6*box_body] = 8.0;       // 世界系 +x，低于 mu*m*g
+    mj_step(m, d);
+  }
+
+  mjtNum world_force[3] = {0, 0, 0};
+  mjtNum max_ratio = 0;
+  int used = 0;
+  for (int i = 0; i < d->ncon; ++i) {
+    const mjContact& c = d->contact[i];
+    if (c.geom[0] != box_geom && c.geom[1] != box_geom) continue;
+    mjtNum w[6];
+    mj_contactForce(m, d, i, w);
+    for (int axis = 0; axis < 3; ++axis) {
+      world_force[axis] += c.frame[axis] * w[0]
+                         + c.frame[3+axis] * w[1]
+                         + c.frame[6+axis] * w[2];
+    }
+    mjtNum ratio = std::sqrt(w[1]*w[1] + w[2]*w[2]) / (0.8*w[0]);
+    max_ratio = mju_max(max_ratio, ratio);
+    ++used;
+  }
+
+  std::printf("contacts=%d  friction_cone=%s\n", used,
+              mj_isPyramidal(m) ? "pyramidal" : "elliptic");
+  std::printf("world contact force = [% .6f, % .6f, % .6f] N\n",
+              world_force[0], world_force[1], world_force[2]);
+  std::printf("expected approximately [-8, 0, %.5f] N\n", 2*9.81);
+  std::printf("max contact friction utilization = %.4f\n", max_ratio);
+  std::printf("box vx = %.6g m/s\n", d->qvel[0]);
+
+  mj_deleteData(d);
+  mj_deleteModel(m);
+  return EXIT_SUCCESS;
+}
+```
+
+#### 构建文件：`CMakeLists.txt`
+
+```cmake
+cmake_minimum_required(VERSION 3.16)
+project(28_contact_wrench LANGUAGES CXX)
+
+set(CMAKE_CXX_STANDARD 17)
+add_executable(demo main.cc)
+
+set(MUJOCO_ROOT ${CMAKE_CURRENT_LIST_DIR}/../../mujoco-3.11.0)
+target_include_directories(demo PRIVATE ${MUJOCO_ROOT}/include)
+target_link_directories(demo PRIVATE ${MUJOCO_ROOT}/lib)
+target_link_libraries(demo PRIVATE mujoco)
+set_target_properties(demo PROPERTIES BUILD_RPATH ${MUJOCO_ROOT}/lib)
+```
+<!-- EMBEDDED_EXAMPLE_END: 28_contact_wrench -->
+
 ## 18.8 人形机器人接触诊断
 
 “机器人摔倒”不是一个足够具体的故障描述。建议按下面的观测链定位：

@@ -9,9 +9,12 @@ or compiling MuJoCo.
 - Public headers: `include/`
 - Runtime library: `lib/libmujoco.so.3.11.0`
 - Official utilities and samples: `bin/`, `sample/`
+- Bundled GLFW for tutorial viewer examples: `third_party/glfw/`
 
 The tutorial CMake projects use only `include/` and `lib/`, at this fixed
 repository-relative location. This SDK does not make the binaries compatible
 with other operating systems or CPU architectures. Users on another platform
 must replace this directory with the matching official 3.11.0 SDK while
-preserving the same `include/` and `lib/` layout.
+preserving the same `include/` and `lib/` layout. The Linux viewer examples
+also use the bundled GLFW 3.3.10 shared library and headers. Its Debian
+copyright and license record is stored in `third_party/glfw/LICENSE.debian`.

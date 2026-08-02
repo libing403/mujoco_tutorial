@@ -190,6 +190,122 @@ const mjtNum* value = d->sensordata + adr;
 
 不要通过 `sizeof(pointer)` 推导数组长度；长度都来自 model。MuJoCo 3.11 的部分计数字段采用 `mjtSize`，打印时应使用兼容类型转换或正确格式。
 
+### 配套实验：用程序读出模型布局
+
+`examples/02_inspect` 把“不要猜数组下标”变成一个可运行的检查程序。它加载任意 MJCF，输出模型规模、joint 的 `qposadr/dofadr`，以及 forward 后的 body 世界坐标。
+
+```bash
+cd examples/02_inspect
+cmake -S . -B build
+cmake --build build
+./build/demo ../../models/two_link.xml
+```
+
+<!-- EMBEDDED_EXAMPLE_BEGIN: 02_inspect -->
+### 可视化运行与效果
+
+```bash
+../../mujoco-3.11.0/bin/simulate model.xml
+```
+
+该命令使用发布包自带的官方 `simulate` 界面，可暂停、单步、施加扰动并开启接触等可视化标志。
+
+![02_inspect 实验运行效果](../assets/experiments/02_inspect.png)
+
+*02_inspect 的真实 MuJoCo 原生渲染结果。*
+
+### 实验完整源码
+
+以下文件与 `examples/02_inspect/` 中可直接编译的版本一致。
+
+#### 模型文件：`model.xml`
+
+```xml
+<mujoco model="two_link_arm">
+  <compiler angle="radian"/>
+  <option timestep="0.001" gravity="0 0 -9.81" integrator="implicitfast"/>
+  <default>
+    <joint axis="0 1 0" damping="0.2" limited="true" range="-3.14 3.14"/>
+    <geom type="capsule" size="0.04" rgba="0.25 0.55 0.85 1"/>
+    <motor ctrllimited="true" ctrlrange="-100 100"/>
+  </default>
+  <worldbody>
+    <body name="upper" pos="0 0 1">
+      <joint name="shoulder"/>
+      <geom fromto="0 0 0 0 0 -0.5" mass="1.0"/>
+      <body name="forearm" pos="0 0 -0.5">
+        <joint name="elbow"/>
+        <geom fromto="0 0 0 0 0 -0.4" mass="0.7"/>
+        <site name="tool" pos="0 0 -0.4" size="0.025" rgba="1 0.2 0.1 1"/>
+      </body>
+    </body>
+  </worldbody>
+  <actuator>
+    <motor name="shoulder_motor" joint="shoulder" gear="1"/>
+    <motor name="elbow_motor" joint="elbow" gear="1"/>
+  </actuator>
+</mujoco>
+```
+
+#### 程序源码：`main.cc`
+
+```cpp
+#include <cstdio>
+#include <cstdlib>
+#include <mujoco/mujoco.h>
+
+int main(int argc, char** argv) {
+  if (argc != 2) {
+    std::fprintf(stderr, "用法: %s model.xml\n", argv[0]);
+    return EXIT_FAILURE;
+  }
+  char error[1024] = {0};
+  mjModel* m = mj_loadXML(argv[1], NULL, error, sizeof(error));
+  if (!m) {
+    std::fprintf(stderr, "无法加载 %s:\n%s\n", argv[1], error);
+    return EXIT_FAILURE;
+  }
+  mjData* d = mj_makeData(m);
+  mj_forward(m, d);
+
+  std::printf("nbody=%lld njnt=%lld nq=%lld nv=%lld nu=%lld nsensor=%lld\n",
+              (long long)m->nbody, (long long)m->njnt, (long long)m->nq,
+              (long long)m->nv, (long long)m->nu, (long long)m->nsensor);
+  for (int i = 0; i < m->njnt; ++i) {
+    const char* name = mj_id2name(m, mjOBJ_JOINT, i);
+    std::printf("joint[%d] %-10s type=%d qposadr=%d dofadr=%d\n", i,
+                name ? name : "(unnamed)", m->jnt_type[i],
+                m->jnt_qposadr[i], m->jnt_dofadr[i]);
+  }
+  for (int i = 1; i < m->nbody; ++i) {
+    const char* name = mj_id2name(m, mjOBJ_BODY, i);
+    std::printf("body[%d] %-10s world_pos=(%.3f %.3f %.3f)\n", i,
+                name ? name : "(unnamed)", d->xpos[3*i], d->xpos[3*i+1], d->xpos[3*i+2]);
+  }
+
+  mj_deleteData(d);
+  mj_deleteModel(m);
+  return EXIT_SUCCESS;
+}
+```
+
+#### 构建文件：`CMakeLists.txt`
+
+```cmake
+cmake_minimum_required(VERSION 3.16)
+project(02_inspect LANGUAGES CXX)
+
+set(CMAKE_CXX_STANDARD 17)
+add_executable(demo main.cc)
+
+set(MUJOCO_ROOT ${CMAKE_CURRENT_LIST_DIR}/../../mujoco-3.11.0)
+target_include_directories(demo PRIVATE ${MUJOCO_ROOT}/include)
+target_link_directories(demo PRIVATE ${MUJOCO_ROOT}/lib)
+target_link_libraries(demo PRIVATE mujoco)
+set_target_properties(demo PROPERTIES BUILD_RPATH ${MUJOCO_ROOT}/lib)
+```
+<!-- EMBEDDED_EXAMPLE_END: 02_inspect -->
+
 ## 3.8 独立实验：观察陈旧派生量
 
 ```bash
@@ -210,6 +326,117 @@ cmake --build build
 预期结果中，“修改 qpos 后、forward 前”的 site 坐标与初始值完全相同；forward 后才改变。状态恢复后 qpos 和 tool 坐标应与快照一致。
 
 这个实验不是展示 bug，而是展示 API 契约：派生数据只在相应计算函数之后有效。
+
+<!-- EMBEDDED_EXAMPLE_BEGIN: 14_data_consistency -->
+### 可视化运行与效果
+
+```bash
+../../mujoco-3.11.0/bin/simulate model.xml
+```
+
+该命令使用发布包自带的官方 `simulate` 界面，可暂停、单步、施加扰动并开启接触等可视化标志。
+
+![14_data_consistency 实验运行效果](../assets/experiments/14_data_consistency.png)
+
+*14_data_consistency 的真实 MuJoCo 原生渲染结果。*
+
+### 实验完整源码
+
+以下文件与 `examples/14_data_consistency/` 中可直接编译的版本一致。
+
+#### 模型文件：`model.xml`
+
+```xml
+<mujoco model="data_consistency">
+  <compiler angle="radian"/>
+  <option timestep="0.001"/>
+  <worldbody>
+    <body name="upper" pos="0 0 1">
+      <joint name="shoulder" axis="0 1 0" damping=".2"/>
+      <geom type="capsule" fromto="0 0 0 0 0 -.5" size=".04" mass="1"/>
+      <body name="forearm" pos="0 0 -.5">
+        <joint name="elbow" axis="0 1 0" damping=".2"/>
+        <geom type="capsule" fromto="0 0 0 0 0 -.4" size=".035" mass=".7"/>
+        <site name="tool" pos="0 0 -.4" size=".02"/>
+      </body>
+    </body>
+  </worldbody>
+</mujoco>
+```
+
+#### 程序源码：`main.cc`
+
+```cpp
+#include <cstdio>
+#include <cstdlib>
+#include <vector>
+#include <mujoco/mujoco.h>
+
+int main(int argc, char** argv) {
+  if (argc != 2) {
+    std::fprintf(stderr, "用法: %s model.xml\n", argv[0]);
+    return EXIT_FAILURE;
+  }
+  char error[1024] = {0};
+  mjModel* m = mj_loadXML(argv[1], NULL, error, sizeof(error));
+  if (!m) {
+    std::fprintf(stderr, "无法加载 %s:\n%s\n", argv[1], error);
+    return EXIT_FAILURE;
+  }
+  mjData* d = mj_makeData(m);
+  int shoulder = mj_name2id(m, mjOBJ_JOINT, "shoulder");
+  int tool = mj_name2id(m, mjOBJ_SITE, "tool");
+  int qadr = m->jnt_qposadr[shoulder];
+
+  mj_forward(m, d);
+  mjtNum initial[3];
+  mju_copy3(initial, d->site_xpos + 3*tool);
+  std::printf("initial             tool=(%.6f %.6f %.6f)\n",
+              initial[0], initial[1], initial[2]);
+
+  d->qpos[qadr] = 0.8;
+  std::printf("qpos changed        tool=(%.6f %.6f %.6f)  <- stale\n",
+              d->site_xpos[3*tool], d->site_xpos[3*tool+1], d->site_xpos[3*tool+2]);
+  mj_forward(m, d);
+  std::printf("after mj_forward    tool=(%.6f %.6f %.6f)\n",
+              d->site_xpos[3*tool], d->site_xpos[3*tool+1], d->site_xpos[3*tool+2]);
+
+  int spec = mjSTATE_INTEGRATION;
+  std::vector<mjtNum> snapshot(mj_stateSize(m, spec));
+  mj_getState(m, d, snapshot.data(), spec);
+  mjtNum saved_q = d->qpos[qadr];
+  mjtNum saved_tool[3];
+  mju_copy3(saved_tool, d->site_xpos + 3*tool);
+  for (int i = 0; i < 200; ++i) mj_step(m, d);
+  mj_setState(m, d, snapshot.data(), spec);
+  mj_forward(m, d);
+  mjtNum position_error[3];
+  mju_sub3(position_error, d->site_xpos + 3*tool, saved_tool);
+  std::printf("restored errors     q=%.3g tool_norm=%.3g\n",
+              d->qpos[qadr]-saved_q, mju_norm3(position_error));
+
+  mj_deleteData(d);
+  mj_deleteModel(m);
+  return EXIT_SUCCESS;
+}
+```
+
+#### 构建文件：`CMakeLists.txt`
+
+```cmake
+cmake_minimum_required(VERSION 3.16)
+project(14_data_consistency LANGUAGES CXX)
+
+set(CMAKE_CXX_STANDARD 17)
+add_executable(demo main.cc)
+
+set(MUJOCO_ROOT ${CMAKE_CURRENT_LIST_DIR}/../../mujoco-3.11.0)
+target_include_directories(demo PRIVATE ${MUJOCO_ROOT}/include)
+target_link_directories(demo PRIVATE ${MUJOCO_ROOT}/lib)
+target_link_libraries(demo PRIVATE mujoco)
+set_target_properties(demo PROPERTIES BUILD_RPATH ${MUJOCO_ROOT}/lib)
+```
+<!-- EMBEDDED_EXAMPLE_END: 14_data_consistency -->
 
 ## 3.9 重置、keyframe 与状态快照
 
@@ -236,6 +463,222 @@ mj_forward(m, d);
 ```
 
 `mjSTATE_PHYSICS`、`FULLPHYSICS`、`USER`、`INTEGRATION` 覆盖范围不同。保存控制优化 rollout 时，遗漏 warmstart 或 plugin state 可能改变后续轨迹；只做纯运动学时又没必要保存所有输入。
+
+### 配套实验：快照保存与恢复
+
+`examples/07_state_snapshot` 使用 state specification API 保存积分状态，在人为扰动并推进仿真后恢复，最后打印逐元素误差。
+
+```bash
+cd examples/07_state_snapshot
+cmake -S . -B build
+cmake --build build
+./build/demo model.xml
+```
+
+<!-- EMBEDDED_EXAMPLE_BEGIN: 07_state_snapshot -->
+### 可视化运行与效果
+
+```bash
+../../mujoco-3.11.0/bin/simulate model.xml
+```
+
+该命令使用发布包自带的官方 `simulate` 界面，可暂停、单步、施加扰动并开启接触等可视化标志。
+
+![07_state_snapshot 实验运行效果](../assets/experiments/07_state_snapshot.png)
+
+*07_state_snapshot 的真实 MuJoCo 原生渲染结果。*
+
+### 实验完整源码
+
+以下文件与 `examples/07_state_snapshot/` 中可直接编译的版本一致。
+
+#### 模型文件：`model.xml`
+
+```xml
+<mujoco model="two_link_arm">
+  <compiler angle="radian"/>
+  <option timestep="0.001" gravity="0 0 -9.81" integrator="implicitfast"/>
+  <default>
+    <joint axis="0 1 0" damping="0.2" limited="true" range="-3.14 3.14"/>
+    <geom type="capsule" size="0.04" rgba="0.25 0.55 0.85 1"/>
+    <motor ctrllimited="true" ctrlrange="-100 100"/>
+  </default>
+  <worldbody>
+    <body name="upper" pos="0 0 1">
+      <joint name="shoulder"/>
+      <geom fromto="0 0 0 0 0 -0.5" mass="1.0"/>
+      <body name="forearm" pos="0 0 -0.5">
+        <joint name="elbow"/>
+        <geom fromto="0 0 0 0 0 -0.4" mass="0.7"/>
+        <site name="tool" pos="0 0 -0.4" size="0.025" rgba="1 0.2 0.1 1"/>
+      </body>
+    </body>
+  </worldbody>
+  <actuator>
+    <motor name="shoulder_motor" joint="shoulder" gear="1"/>
+    <motor name="elbow_motor" joint="elbow" gear="1"/>
+  </actuator>
+</mujoco>
+```
+
+#### 程序源码：`main.cc`
+
+```cpp
+#include <cstdio>
+#include <cstdlib>
+#include <mujoco/mujoco.h>
+
+#include <vector>
+
+int main(int argc, char** argv) {
+  if (argc != 2) {
+    std::fprintf(stderr, "用法: %s model.xml\n", argv[0]);
+    return EXIT_FAILURE;
+  }
+  char error[1024] = {0};
+  mjModel* m = mj_loadXML(argv[1], NULL, error, sizeof(error));
+  if (!m) {
+    std::fprintf(stderr, "无法加载 %s:\n%s\n", argv[1], error);
+    return EXIT_FAILURE;
+  }
+  mjData* d = mj_makeData(m);
+  int spec = mjSTATE_INTEGRATION;
+  int nstate = mj_stateSize(m, spec);
+  std::vector<mjtNum> snapshot(nstate);
+
+  d->ctrl[0] = 3.0;
+  for (int i = 0; i < 100; ++i) mj_step(m, d);
+  mj_getState(m, d, snapshot.data(), spec);
+  mjtNum saved_time = d->time, saved_q0 = d->qpos[0];
+
+  for (int i = 0; i < 100; ++i) mj_step(m, d);
+  mj_setState(m, d, snapshot.data(), spec);
+  mj_forward(m, d);
+  std::printf("state_size=%d restored_time=%.6f restored_q0=%.9f errors=(%.3g %.3g)\n",
+              nstate, d->time, d->qpos[0], d->time-saved_time, d->qpos[0]-saved_q0);
+
+  mj_deleteData(d); mj_deleteModel(m);
+  return EXIT_SUCCESS;
+}
+```
+
+#### 构建文件：`CMakeLists.txt`
+
+```cmake
+cmake_minimum_required(VERSION 3.16)
+project(07_state_snapshot LANGUAGES CXX)
+
+set(CMAKE_CXX_STANDARD 17)
+add_executable(demo main.cc)
+
+set(MUJOCO_ROOT ${CMAKE_CURRENT_LIST_DIR}/../../mujoco-3.11.0)
+target_include_directories(demo PRIVATE ${MUJOCO_ROOT}/include)
+target_link_directories(demo PRIVATE ${MUJOCO_ROOT}/lib)
+target_link_libraries(demo PRIVATE mujoco)
+set_target_properties(demo PROPERTIES BUILD_RPATH ${MUJOCO_ROOT}/lib)
+```
+<!-- EMBEDDED_EXAMPLE_END: 07_state_snapshot -->
+
+### 配套实验：keyframe 是可命名的标准初态
+
+`examples/12_keyframe` 依次恢复三个 keyframe，调用 `mj_forward`，并输出末端 site 位置。它展示 keyframe 不只是 qpos 列表，而是可用于回归测试和任务初始化的模型数据。
+
+```bash
+cd examples/12_keyframe
+cmake -S . -B build
+cmake --build build
+./build/demo model.xml
+```
+
+<!-- EMBEDDED_EXAMPLE_BEGIN: 12_keyframe -->
+### 可视化运行与效果
+
+```bash
+../../mujoco-3.11.0/bin/simulate model.xml
+```
+
+该命令使用发布包自带的官方 `simulate` 界面，可暂停、单步、施加扰动并开启接触等可视化标志。
+
+![12_keyframe 实验运行效果](../assets/experiments/12_keyframe.png)
+
+*12_keyframe 的真实 MuJoCo 原生渲染结果。*
+
+### 实验完整源码
+
+以下文件与 `examples/12_keyframe/` 中可直接编译的版本一致。
+
+#### 模型文件：`model.xml`
+
+```xml
+<mujoco model="keyframe_arm">
+  <compiler angle="degree"/>
+  <worldbody>
+    <body pos="0 0 1">
+      <joint name="j1" axis="0 1 0"/>
+      <geom type="capsule" fromto="0 0 0 0 0 -.5" size=".04" mass="1"/>
+      <body pos="0 0 -.5">
+        <joint name="j2" axis="0 1 0"/>
+        <geom type="capsule" fromto="0 0 0 0 0 -.4" size=".035" mass=".7"/>
+        <site name="tool" pos="0 0 -.4" size=".02"/>
+      </body>
+    </body>
+  </worldbody>
+  <keyframe>
+    <key name="home" qpos="0 0"/>
+    <key name="reach" time="1" qpos="45 -70"/>
+    <key name="fold" time="2" qpos="-30 110"/>
+  </keyframe>
+</mujoco>
+```
+
+#### 程序源码：`main.cc`
+
+```cpp
+#include <cstdio>
+#include <cstdlib>
+#include <mujoco/mujoco.h>
+
+int main(int argc, char** argv) {
+  if (argc != 2) {
+    std::fprintf(stderr, "用法: %s model.xml\n", argv[0]);
+    return EXIT_FAILURE;
+  }
+  char error[1024] = {0};
+  mjModel* m = mj_loadXML(argv[1], NULL, error, sizeof(error));
+  if (!m) {
+    std::fprintf(stderr, "无法加载 %s:\n%s\n", argv[1], error);
+    return EXIT_FAILURE;
+  }
+  mjData* d = mj_makeData(m);
+  for (int key = 0; key < m->nkey; ++key) {
+    mj_resetDataKeyframe(m, d, key);
+    mj_forward(m, d);
+    const char* name = mj_id2name(m, mjOBJ_KEY, key);
+    std::printf("key[%d] %-8s time=%.2f q=(%.4f %.4f) tool=(%.4f %.4f %.4f)\n",
+                key, name ? name : "(unnamed)", d->time, d->qpos[0], d->qpos[1],
+                d->site_xpos[0], d->site_xpos[1], d->site_xpos[2]);
+  }
+  mj_deleteData(d); mj_deleteModel(m);
+  return EXIT_SUCCESS;
+}
+```
+
+#### 构建文件：`CMakeLists.txt`
+
+```cmake
+cmake_minimum_required(VERSION 3.16)
+project(12_keyframe LANGUAGES CXX)
+
+set(CMAKE_CXX_STANDARD 17)
+add_executable(demo main.cc)
+
+set(MUJOCO_ROOT ${CMAKE_CURRENT_LIST_DIR}/../../mujoco-3.11.0)
+target_include_directories(demo PRIVATE ${MUJOCO_ROOT}/include)
+target_link_directories(demo PRIVATE ${MUJOCO_ROOT}/lib)
+target_link_libraries(demo PRIVATE mujoco)
+set_target_properties(demo PROPERTIES BUILD_RPATH ${MUJOCO_ROOT}/lib)
+```
+<!-- EMBEDDED_EXAMPLE_END: 12_keyframe -->
 
 ## 3.10 复制 data 与并行 rollout
 
@@ -327,4 +770,3 @@ left_foot.force_sensor_address/dimension
 3. 不一定。sensor 在最终编译模型中的顺序和前面所有 sensor 的 dim 决定地址，应读取 `sensor_adr`，不能自行累加配置假设。
 4. 遍历预期名称，`mj_name2id(m,mjOBJ_JOINT,name)`，检查 ID、`jnt_type[id]==mjJNT_HINGE`，再验证对应 actuator mapping 和总数。
 5. 引擎把 model 当只读，两个 data 的状态和工作区互不重叠；共享同一个 data 会并发读写 qpos、arena、constraint 和 solver 缓冲区。
-

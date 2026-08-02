@@ -117,6 +117,106 @@ cmake --build build -j
 
 实验不追求“某组参数永远稳定”，而是训练读者观察上升时间、最大误差、饱和占空比与终值误差。把 `Kp/Kd` 增大一倍后再次运行，延迟分支通常最早暴露稳定裕量不足。
 
+<!-- EMBEDDED_EXAMPLE_BEGIN: 31_sampled_pd -->
+### 可视化运行与效果
+
+```bash
+../../mujoco-3.11.0/bin/simulate model.xml
+```
+
+该命令使用发布包自带的官方 `simulate` 界面，可暂停、单步、施加扰动并开启接触等可视化标志。
+
+![31_sampled_pd 实验运行效果](../assets/experiments/31_sampled_pd.png)
+
+*31_sampled_pd 的真实 MuJoCo 原生渲染结果。*
+
+### 实验完整源码
+
+以下文件与 `examples/31_sampled_pd/` 中可直接编译的版本一致。
+
+#### 模型文件：`model.xml`
+
+```xml
+<mujoco model="sampled PD">
+  <option timestep="0.001" gravity="0 0 0" integrator="implicitfast"/>
+  <worldbody>
+    <body>
+      <joint name="joint" axis="0 0 1" damping="0.05" armature="0.02"/>
+      <geom type="capsule" fromto="0 0 0 .6 0 0" size=".04" mass="1"/>
+    </body>
+  </worldbody>
+  <actuator><motor joint="joint" ctrlrange="-3 3" ctrllimited="true"/></actuator>
+</mujoco>
+```
+
+#### 程序源码：`main.cc`
+
+```cpp
+#include <cmath>
+#include <cstdio>
+#include <cstdlib>
+#include <mujoco/mujoco.h>
+
+struct Result { double final_error, rms_error, peak_error, saturation; };
+
+Result run(const mjModel* m, int control_steps, bool one_cycle_delay) {
+  mjData* d = mj_makeData(m);
+  double command = 0, delayed = 0, sum2 = 0, peak = 0;
+  int saturated = 0, steps = 3000;
+  for (int k = 0; k < steps; ++k) {
+    double target = k < 500 ? 0.0 : 1.0;
+    if (k % control_steps == 0) {
+      double raw = 8.0*(target-d->qpos[0]) - 0.7*d->qvel[0];
+      double next = mju_clip(raw, -3.0, 3.0);
+      if (std::fabs(raw) > 3.0) ++saturated;
+      if (one_cycle_delay) { command = delayed; delayed = next; }
+      else command = next;
+    }
+    d->ctrl[0] = command;
+    mj_step(m, d);
+    double e = target-d->qpos[0];
+    sum2 += e*e;
+    peak = mju_max(peak, std::fabs(e));
+  }
+  Result r{std::fabs(1.0-d->qpos[0]), std::sqrt(sum2/steps), peak,
+           double(saturated)/(steps/control_steps)};
+  mj_deleteData(d);
+  return r;
+}
+
+int main(int argc, char** argv) {
+  if (argc != 2) { std::fprintf(stderr, "用法: %s model.xml\n", argv[0]); return 1; }
+  char error[1024] = {0};
+  mjModel* m = mj_loadXML(argv[1], NULL, error, sizeof(error));
+  if (!m) { std::fprintf(stderr, "%s\n", error); return 1; }
+  const char* names[3] = {"1 ms", "20 ms", "20 ms + one-cycle delay"};
+  Result r[3] = {run(m, 1, false), run(m, 20, false), run(m, 20, true)};
+  std::puts("case                    final_error   rms_error   peak_error   saturation");
+  for (int i = 0; i < 3; ++i)
+    std::printf("%-24s %.6f      %.6f    %.6f     %.1f%%\n", names[i],
+                r[i].final_error, r[i].rms_error, r[i].peak_error, 100*r[i].saturation);
+  mj_deleteModel(m);
+  return 0;
+}
+```
+
+#### 构建文件：`CMakeLists.txt`
+
+```cmake
+cmake_minimum_required(VERSION 3.16)
+project(31_sampled_pd LANGUAGES CXX)
+
+set(CMAKE_CXX_STANDARD 17)
+add_executable(demo main.cc)
+
+set(MUJOCO_ROOT ${CMAKE_CURRENT_LIST_DIR}/../../mujoco-3.11.0)
+target_include_directories(demo PRIVATE ${MUJOCO_ROOT}/include)
+target_link_directories(demo PRIVATE ${MUJOCO_ROOT}/lib)
+target_link_libraries(demo PRIVATE mujoco)
+set_target_properties(demo PROPERTIES BUILD_RPATH ${MUJOCO_ROOT}/lib)
+```
+<!-- EMBEDDED_EXAMPLE_END: 31_sampled_pd -->
+
 ## 21.8 人形与机械臂工程模式
 
 机械臂常见分层：1 kHz 电流/力矩环、200～1000 Hz 关节控制、50～200 Hz 轨迹规划。人形机器人还会加入高频 IMU、状态估计、全身控制和较低频步态规划。仿真应复现接口频率和保持行为，而非所有算法都按物理步长运行。

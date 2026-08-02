@@ -150,6 +150,187 @@ cmake --build build -j
 ./build/demo
 ```
 
+<!-- EMBEDDED_EXAMPLE_BEGIN: 44_vfs_model -->
+### 可视化运行与效果
+
+```bash
+../../mujoco-3.11.0/bin/simulate view.xml
+```
+
+该命令使用发布包自带的官方 `simulate` 界面，可暂停、单步、施加扰动并开启接触等可视化标志。
+
+![44_vfs_model 实验运行效果](../assets/experiments/44_vfs_model.png)
+
+*44_vfs_model 的真实 MuJoCo 原生渲染结果。*
+
+### 实验完整源码
+
+以下文件与 `examples/44_vfs_model/` 中可直接编译的版本一致。
+
+#### 可视化模型：`view.xml`
+
+```xml
+<mujoco model="VFS embedded model">
+  <worldbody>
+    <light pos="0 -2 3"/>
+    <geom type="plane" size="2 2 .1" rgba=".2 .25 .3 1"/>
+    <body pos="0 0 .5">
+      <freejoint/>
+      <geom type="sphere" size=".1" mass="1" rgba=".9 .4 .2 1"/>
+    </body>
+  </worldbody>
+</mujoco>
+```
+
+#### 程序源码：`main.cc`
+
+```cpp
+#include <cstdio>
+#include <cstring>
+#include <mujoco/mujoco.h>
+
+int main() {
+  const char xml[] = R"(<mujoco model="memory model">
+    <worldbody><body><freejoint/><geom type="sphere" size=".1" mass="1"/></body></worldbody>
+  </mujoco>)";
+  mjVFS vfs; mj_defaultVFS(&vfs);
+  if (mj_addBufferVFS(&vfs, "embedded.xml", xml, std::strlen(xml)) != 0) {
+    std::fprintf(stderr, "无法向 VFS 添加内存模型\n"); mj_deleteVFS(&vfs); return 1;
+  }
+  char error[1024] = {0};
+  mjModel* m=mj_loadXML("embedded.xml", &vfs, error, sizeof(error));
+  if (!m) { std::fprintf(stderr, "%s\n", error); mj_deleteVFS(&vfs); return 1; }
+  mjData* d=mj_makeData(m);
+  for (int k=0;k<100;++k) mj_step(m,d);
+  std::printf("loaded entirely from VFS: model=%s nq=%lld z=%.6f\n",
+              m->names, static_cast<long long>(m->nq), d->qpos[2]);
+  mj_deleteData(d); mj_deleteModel(m); mj_deleteVFS(&vfs); return 0;
+}
+```
+
+#### 构建文件：`CMakeLists.txt`
+
+```cmake
+cmake_minimum_required(VERSION 3.16)
+project(44_vfs_model LANGUAGES CXX)
+
+set(CMAKE_CXX_STANDARD 17)
+add_executable(demo main.cc)
+
+set(MUJOCO_ROOT ${CMAKE_CURRENT_LIST_DIR}/../../mujoco-3.11.0)
+target_include_directories(demo PRIVATE ${MUJOCO_ROOT}/include)
+target_link_directories(demo PRIVATE ${MUJOCO_ROOT}/lib)
+target_link_libraries(demo PRIVATE mujoco)
+set_target_properties(demo PROPERTIES BUILD_RPATH ${MUJOCO_ROOT}/lib)
+```
+<!-- EMBEDDED_EXAMPLE_END: 44_vfs_model -->
+
+<!-- EMBEDDED_EXAMPLE_BEGIN: 43_sensor_plugin -->
+### 可视化运行与效果
+
+```bash
+../../mujoco-3.11.0/bin/simulate view.xml
+```
+
+该命令使用发布包自带的官方 `simulate` 界面，可暂停、单步、施加扰动并开启接触等可视化标志。
+
+![43_sensor_plugin 实验运行效果](../assets/experiments/43_sensor_plugin.png)
+
+*43_sensor_plugin 的真实 MuJoCo 原生渲染结果。*
+
+### 实验完整源码
+
+以下文件与 `examples/43_sensor_plugin/` 中可直接编译的版本一致。
+
+#### 模型文件：`model.xml`
+
+```xml
+<mujoco model="sensor plugin">
+  <extension><plugin plugin="book.sensor.state"/></extension>
+  <worldbody>
+    <body>
+      <joint name="hinge" axis="0 1 0"/>
+      <geom type="capsule" fromto="0 0 0 0 0 -.4" size=".03"/>
+    </body>
+  </worldbody>
+  <sensor><plugin name="time_and_angle" plugin="book.sensor.state"/></sensor>
+</mujoco>
+```
+
+#### 可视化模型：`view.xml`
+
+```xml
+<mujoco model="sensor plugin geometry">
+  <worldbody>
+    <light pos="0 -2 3"/>
+    <body pos="0 0 .8">
+      <joint name="hinge" axis="0 1 0"/>
+      <geom type="capsule" fromto="0 0 0 0 0 -.4" size=".03"
+            rgba=".3 .7 .9 1"/>
+    </body>
+  </worldbody>
+</mujoco>
+```
+
+#### 程序源码：`main.cc`
+
+```cpp
+#include <cstdio>
+#include <cstdlib>
+#include <mujoco/mujoco.h>
+
+void register_sensor() {
+  mjpPlugin plugin; mjp_defaultPlugin(&plugin);
+  plugin.name = "book.sensor.state";
+  plugin.capabilityflags = mjPLUGIN_SENSOR;
+  plugin.needstage = mjSTAGE_POS;
+  plugin.nstate = +[](const mjModel*, int) { return 0; };
+  plugin.nsensordata = +[](const mjModel*, int, int) { return 2; };
+  plugin.init = +[](const mjModel*, mjData*, int) { return 0; };
+  plugin.reset = +[](const mjModel*, mjtNum*, void*, int) {};
+  plugin.compute = +[](const mjModel* m, mjData* d, int instance, int capability) {
+    if (!(capability & mjPLUGIN_SENSOR)) return;
+    for (int sensor=0; sensor<m->nsensor; ++sensor) {
+      if (m->sensor_plugin[sensor] != instance) continue;
+      int adr=m->sensor_adr[sensor];
+      d->sensordata[adr] = d->time;
+      d->sensordata[adr+1] = m->nq ? d->qpos[0] : 0;
+    }
+  };
+  mjp_registerPlugin(&plugin);
+}
+
+int main(int argc, char** argv) {
+  if (argc != 2) { std::fprintf(stderr, "用法: %s model.xml\n", argv[0]); return 1; }
+  register_sensor();
+  char error[1024] = {0}; mjModel* m=mj_loadXML(argv[1],NULL,error,sizeof(error));
+  if (!m) { std::fprintf(stderr, "%s\n", error); return 1; }
+  mjData* d=mj_makeData(m); d->qpos[0]=0.7; mj_forward(m,d);
+  for (int k=0;k<100;++k) mj_step(m,d);
+  int id=mj_name2id(m,mjOBJ_SENSOR,"time_and_angle"), adr=m->sensor_adr[id];
+  std::printf("plugin count=%d, sensor dim=%d, time=%.6f, angle=%.6f\n",
+              mjp_pluginCount(), m->sensor_dim[id], d->sensordata[adr], d->sensordata[adr+1]);
+  mj_deleteData(d); mj_deleteModel(m); return 0;
+}
+```
+
+#### 构建文件：`CMakeLists.txt`
+
+```cmake
+cmake_minimum_required(VERSION 3.16)
+project(43_sensor_plugin LANGUAGES CXX)
+
+set(CMAKE_CXX_STANDARD 17)
+add_executable(demo main.cc)
+
+set(MUJOCO_ROOT ${CMAKE_CURRENT_LIST_DIR}/../../mujoco-3.11.0)
+target_include_directories(demo PRIVATE ${MUJOCO_ROOT}/include)
+target_link_directories(demo PRIVATE ${MUJOCO_ROOT}/lib)
+target_link_libraries(demo PRIVATE mujoco)
+set_target_properties(demo PROPERTIES BUILD_RPATH ${MUJOCO_ROOT}/lib)
+```
+<!-- EMBEDDED_EXAMPLE_END: 43_sensor_plugin -->
+
 ## 34.13 常见误区
 
 - MJCF compile 后才注册 plugin；

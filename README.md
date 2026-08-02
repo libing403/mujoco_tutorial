@@ -1,5 +1,7 @@
 # MuJoCo机器人仿真实战
 
+本书的每个实验都在正文中给出完整的 `main.cc`、极简 `CMakeLists.txt` 以及实验所需的 `model.xml`，便于边读边理解；同一份文件也保存在独立的 `examples/NN_name/` 目录中，可直接编译运行。
+
 这是一部面向人形机器人、机械臂和机器人仿真工程师的系统教材。它不是 API 摘抄：每个主题从物理/数学原理出发，落到 `mjModel`、`mjData` 和 C API，再通过可独立运行的最小 C++ 实验形成证据。
 
 书稿当前包含 38 章规划、7 篇知识递进、40 余个独立实验和两个综合项目。版本基线是 **MuJoCo 3.11.0**。
@@ -26,7 +28,7 @@ flowchart LR
 | 第四篇 | 能实现多速率控制、IK、sysID、computed torque、LQR、EKF |
 | 第五篇 | 能用 mjSpec、batch rollout、MJX/APG 组织生成与学习 |
 | 第六篇 | 能做 headless RGB/depth、UI threading、plugin/VFS 和部署升级 |
-| 第七篇 | 能完成 7-DoF arm 与 floating-base biped 的端到端验收 |
+| 第七篇 | 能完成 7-DoF arm 与 Unitree G1 29-DoF 人形的端到端验收 |
 
 完整目录见[全书目录与知识递进](BOOK_OUTLINE.md)，主题验收见[官方文档覆盖矩阵](chapters/00_coverage_matrix.md)，章节质量要求见[书稿规范](BOOK_SPEC.md)。
 
@@ -52,14 +54,24 @@ cmake --build build -j
 
 实验索引、知识点和预期现象见[examples/README.md](examples/README.md)。
 
+## 实验可视化
+
+每个实验都在对应正文中提供真实运行效果图和可视化命令。可视化分为两类：
+
+- 建模、接触、传感器和模型审计实验，直接用发布包自带的 `mujoco-3.11.0/bin/simulate` 打开官方交互界面。
+- PD、拆分步进、阻尼 IK、EKF、7 轴机械臂和 Unitree G1 站立实验，使用 `./build/demo model.xml --view` 显示算法自己推进的 `mjData`。
+
+内嵌 viewer 直接展开 GLFW、`mjv` 和 `mjr` 调用，没有共享 `common.h` 或隐藏框架。默认不加 `--view` 时仍执行原有的无窗口数值验收。
+
 ## 环境
 
 - CMake 3.16 或更高；
 - 支持 C++17 的编译器；
 - Linux x86-64，与仓库 SDK 匹配；
+- 需要桌面窗口的实验使用仓库内置 GLFW，无需额外安装 GLFW 开发包；
 - 离屏渲染实验额外需要系统 `libEGL.so.1` 和可用 EGL/OpenGL driver。
 
-普通 physics/controller 示例不需要 display server、Python 或 MuJoCo 源码。CMake 写入 SDK build RPATH，无需用户修改全局 `LD_LIBRARY_PATH`。
+默认数值模式不需要 display server、Python 或 MuJoCo 源码。只有 `simulate` 和 `--view` 模式需要可用的桌面/OpenGL 环境。CMake 写入 SDK build RPATH，无需用户修改全局 `LD_LIBRARY_PATH`。
 
 ## 教材约定
 

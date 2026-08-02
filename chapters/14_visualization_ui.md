@@ -196,6 +196,131 @@ J_{FD}[:,i]=\frac{p(q\oplus\epsilon e_i)-p(q\oplus(-\epsilon e_i))}{2\epsilon}.
 
 程序报告解析矩阵、差分矩阵和最大误差。`ε=10⁻⁶` 时应接近浮点/截断误差平衡范围。
 
+<!-- EMBEDDED_EXAMPLE_BEGIN: 24_jacobian_finite_difference -->
+### 可视化运行与效果
+
+```bash
+../../mujoco-3.11.0/bin/simulate model.xml
+```
+
+该命令使用发布包自带的官方 `simulate` 界面，可暂停、单步、施加扰动并开启接触等可视化标志。
+
+![24_jacobian_finite_difference 实验运行效果](../assets/experiments/24_jacobian_finite_difference.png)
+
+*24_jacobian_finite_difference 的真实 MuJoCo 原生渲染结果。*
+
+### 实验完整源码
+
+以下文件与 `examples/24_jacobian_finite_difference/` 中可直接编译的版本一致。
+
+#### 模型文件：`model.xml`
+
+```xml
+<mujoco model="jacobian_two_link">
+  <compiler angle="radian"/>
+  <option gravity="0 0 0"/>
+  <worldbody>
+    <body pos="0 0 1">
+      <joint name="shoulder" axis="0 1 0"/>
+      <geom type="capsule" fromto="0 0 0 0 0 -.5" size=".04" mass="1"/>
+      <body pos="0 0 -.5">
+        <joint name="elbow" axis="0 1 0"/>
+        <geom type="capsule" fromto="0 0 0 0 0 -.4" size=".035" mass=".7"/>
+        <site name="tool" pos="0 0 -.4" size=".02"/>
+      </body>
+    </body>
+  </worldbody>
+</mujoco>
+```
+
+#### 程序源码：`main.cc`
+
+```cpp
+#include <cstdio>
+#include <cstdlib>
+#include <vector>
+#include <mujoco/mujoco.h>
+
+int main(int argc, char** argv) {
+  if (argc != 2) {
+    std::fprintf(stderr, "用法: %s model.xml\n", argv[0]);
+    return EXIT_FAILURE;
+  }
+  char error[1024] = {0};
+  mjModel* m = mj_loadXML(argv[1], NULL, error, sizeof(error));
+  if (!m) {
+    std::fprintf(stderr, "无法加载 %s:\n%s\n", argv[1], error);
+    return EXIT_FAILURE;
+  }
+  mjData* d = mj_makeData(m);
+  d->qpos[0] = 0.4;
+  d->qpos[1] = -0.7;
+  mj_forward(m, d);
+  int site = mj_name2id(m, mjOBJ_SITE, "tool");
+
+  std::vector<mjtNum> analytic(3*m->nv), rotational(3*m->nv);
+  std::vector<mjtNum> finite(3*m->nv), q0(m->nq), direction(m->nv);
+  mj_jacSite(m, d, analytic.data(), rotational.data(), site);
+  mju_copy(q0.data(), d->qpos, m->nq);
+  const mjtNum eps = 1e-6;
+
+  for (int col = 0; col < m->nv; ++col) {
+    mju_zero(direction.data(), m->nv);
+    direction[col] = 1;
+    mju_copy(d->qpos, q0.data(), m->nq);
+    mj_integratePos(m, d->qpos, direction.data(), eps);
+    mj_forward(m, d);
+    mjtNum plus[3];
+    mju_copy3(plus, d->site_xpos + 3*site);
+
+    mju_copy(d->qpos, q0.data(), m->nq);
+    mj_integratePos(m, d->qpos, direction.data(), -eps);
+    mj_forward(m, d);
+    mjtNum minus[3];
+    mju_copy3(minus, d->site_xpos + 3*site);
+    for (int row = 0; row < 3; ++row) {
+      finite[row*m->nv+col] = (plus[row]-minus[row])/(2*eps);
+    }
+  }
+
+  mjtNum max_error = 0;
+  std::printf("row       analytic J                finite-difference J\n");
+  for (int row = 0; row < 3; ++row) {
+    std::printf(" %d   ", row);
+    for (int col = 0; col < m->nv; ++col) std::printf(" % .8f", analytic[row*m->nv+col]);
+    std::printf("       ");
+    for (int col = 0; col < m->nv; ++col) {
+      std::printf(" % .8f", finite[row*m->nv+col]);
+      max_error = mju_max(max_error,
+                          mju_abs(analytic[row*m->nv+col]-finite[row*m->nv+col]));
+    }
+    std::printf("\n");
+  }
+  std::printf("max absolute error = %.3g\n", max_error);
+
+  mj_deleteData(d);
+  mj_deleteModel(m);
+  return max_error < 1e-7 ? EXIT_SUCCESS : EXIT_FAILURE;
+}
+```
+
+#### 构建文件：`CMakeLists.txt`
+
+```cmake
+cmake_minimum_required(VERSION 3.16)
+project(24_jacobian_finite_difference LANGUAGES CXX)
+
+set(CMAKE_CXX_STANDARD 17)
+add_executable(demo main.cc)
+
+set(MUJOCO_ROOT ${CMAKE_CURRENT_LIST_DIR}/../../mujoco-3.11.0)
+target_include_directories(demo PRIVATE ${MUJOCO_ROOT}/include)
+target_link_directories(demo PRIVATE ${MUJOCO_ROOT}/lib)
+target_link_libraries(demo PRIVATE mujoco)
+set_target_properties(demo PROPERTIES BUILD_RPATH ${MUJOCO_ROOT}/lib)
+```
+<!-- EMBEDDED_EXAMPLE_END: 24_jacobian_finite_difference -->
+
 ## 14.13 如何选择差分 epsilon
 
 中心差分截断误差约 `O(ε²)`，浮点消减误差随 `1/ε` 放大。ε 太大看到非线性，太小两个位置几乎相等而丢失有效数字。
@@ -273,4 +398,3 @@ v_n=n^T(J_1-J_2)v.
 3. 关节的一阶转动主要产生垂直于连杆的速度，轴向位置变化是一阶不可达或很弱，Jacobian rank/最小奇异值下降。
 4. 用 site 世界旋转矩阵把局部力旋转到世界，再计算 `tau=jacp^T f_world`；若还有 torque 使用完整 jacr。
 5. 大 ε 的截断/非线性误差主导，小 ε 时浮点消减和舍入误差被 `1/ε` 放大。
-

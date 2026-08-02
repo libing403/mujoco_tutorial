@@ -139,6 +139,103 @@ cmake --build build -j
 
 这里省略模型文件不是破坏示例规范，而是知识点要求的最小设计：引入一个从不读取的 XML 只会分散注意力。
 
+<!-- EMBEDDED_EXAMPLE_BEGIN: 38_mjspec_build -->
+### 可视化运行与效果
+
+```bash
+../../mujoco-3.11.0/bin/simulate view.xml
+```
+
+该命令使用发布包自带的官方 `simulate` 界面，可暂停、单步、施加扰动并开启接触等可视化标志。
+
+![38_mjspec_build 实验运行效果](../assets/experiments/38_mjspec_build.png)
+
+*38_mjspec_build 的真实 MuJoCo 原生渲染结果。*
+
+### 实验完整源码
+
+以下文件与 `examples/38_mjspec_build/` 中可直接编译的版本一致。
+
+#### 可视化模型：`view.xml`
+
+```xml
+<mujoco model="mjSpec generated pendulum">
+  <worldbody>
+    <light pos="0 -2 3"/>
+    <geom type="plane" size="2 2 .1" rgba=".2 .25 .3 1"/>
+    <body name="pendulum" pos="0 0 1">
+      <joint name="hinge" type="hinge" axis="0 1 0" damping=".05"/>
+      <geom name="rod" type="capsule" fromto="0 0 0 0 0 -.5"
+            size=".035" mass="1" rgba=".2 .6 .9 1"/>
+    </body>
+  </worldbody>
+</mujoco>
+```
+
+#### 程序源码：`main.cc`
+
+```cpp
+#include <cstdio>
+#include <cstdlib>
+#include <mujoco/mujoco.h>
+
+int main() {
+  mjSpec* spec = mj_makeSpec();
+  mjsBody* body = mjs_addBody(mjs_findBody(spec, "world"), NULL);
+  mjs_setName(body->element, "pendulum");
+
+  mjsJoint* joint = mjs_addJoint(body, NULL);
+  mjs_setName(joint->element, "hinge");
+  joint->type = mjJNT_HINGE;
+  joint->axis[0] = 0; joint->axis[1] = 1; joint->axis[2] = 0;
+  joint->damping[0] = 0.05;
+
+  mjsGeom* geom = mjs_addGeom(body, NULL);
+  mjs_setName(geom->element, "rod");
+  geom->type = mjGEOM_CAPSULE;
+  geom->fromto[0] = 0; geom->fromto[1] = 0; geom->fromto[2] = 0;
+  geom->fromto[3] = 0; geom->fromto[4] = 0; geom->fromto[5] = -0.5;
+  geom->size[0] = 0.035; geom->mass = 1.0;
+
+  mjModel* m = mj_compile(spec, NULL);
+  if (!m) {
+    std::fprintf(stderr, "编译失败: %s\n", mjs_getError(spec));
+    mj_deleteSpec(spec); return EXIT_FAILURE;
+  }
+  mjData* d = mj_makeData(m); d->qpos[0] = 0.8; mj_forward(m, d);
+  for (int k = 0; k < 1000; ++k) mj_step(m, d);
+  std::printf("compiled: nq=%lld nv=%lld nbody=%lld, q(1s)=%.6f rad\n",
+              static_cast<long long>(m->nq), static_cast<long long>(m->nv),
+              static_cast<long long>(m->nbody), d->qpos[0]);
+
+  char error[1024] = {0};
+  char xml[4096];
+  if (mj_saveXMLString(spec, xml, sizeof(xml), error, sizeof(error)) == 0)
+    std::printf("\n--- generated MJCF ---\n%s", xml);
+  else
+    std::fprintf(stderr, "保存 XML 失败: %s\n", error);
+
+  mj_deleteData(d); mj_deleteModel(m); mj_deleteSpec(spec); return 0;
+}
+```
+
+#### 构建文件：`CMakeLists.txt`
+
+```cmake
+cmake_minimum_required(VERSION 3.16)
+project(38_mjspec_build LANGUAGES CXX)
+
+set(CMAKE_CXX_STANDARD 17)
+add_executable(demo main.cc)
+
+set(MUJOCO_ROOT ${CMAKE_CURRENT_LIST_DIR}/../../mujoco-3.11.0)
+target_include_directories(demo PRIVATE ${MUJOCO_ROOT}/include)
+target_link_directories(demo PRIVATE ${MUJOCO_ROOT}/lib)
+target_link_libraries(demo PRIVATE mujoco)
+set_target_properties(demo PROPERTIES BUILD_RPATH ${MUJOCO_ROOT}/lib)
+```
+<!-- EMBEDDED_EXAMPLE_END: 38_mjspec_build -->
+
 ## 28.11 常见误区
 
 - 修改 spec 后继续使用旧 model，误以为变化会自动同步；

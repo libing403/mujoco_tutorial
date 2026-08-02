@@ -1,10 +1,16 @@
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
+#define GLFW_INCLUDE_NONE
+#include <GLFW/glfw3.h>
 #include <mujoco/mujoco.h>
 
 int main(int argc, char** argv) {
-  if (argc!=2) { std::fprintf(stderr,"用法: %s model.xml\n",argv[0]); return 1; }
+  bool view=argc==3 && std::strcmp(argv[2],"--view")==0;
+  if (argc<2 || argc>3 || (argc==3 && !view)) {
+    std::fprintf(stderr,"用法: %s model.xml [--view]\n",argv[0]); return 1;
+  }
   char error[1024]={0}; mjModel* m=mj_loadXML(argv[1],NULL,error,sizeof(error));
   if (!m) { std::fprintf(stderr,"%s\n",error); return 1; }
   if (m->nv!=7 || m->nu!=7) { std::fprintf(stderr,"审计失败: 需要 nv=nu=7\n"); return 1; }
@@ -47,5 +53,27 @@ int main(int argc, char** argv) {
   std::printf("initial TCP = [%.4f %.4f %.4f]\n",initial[0],initial[1],initial[2]);
   std::printf("final TCP   = [%.4f %.4f %.4f]\n",final[0],final[1],final[2]);
   std::printf("position error=%.6f m, peak torque=%.3f Nm, %s\n",err,peak,err<.005?"PASS":"FAIL");
+  if (view) {
+    if (!glfwInit()) return 1;
+    GLFWwindow* window=glfwCreateWindow(1000,750,"45 arm reach",NULL,NULL);
+    if (!window) { glfwTerminate(); return 1; }
+    glfwMakeContextCurrent(window);
+    mjvCamera cam; mjv_defaultCamera(&cam); mjv_defaultFreeCamera(m,&cam);
+    mjvOption opt; mjv_defaultOption(&opt); opt.flags[mjVIS_JOINT]=1;
+    mjvScene scene; mjv_defaultScene(&scene); mjv_makeScene(m,&scene,2000);
+    mjrContext con; mjr_defaultContext(&con); mjr_makeContext(m,&con,mjFONTSCALE_150);
+    while (!glfwWindowShouldClose(window)) {
+      int width,height; glfwGetFramebufferSize(window,&width,&height);
+      mjrRect viewport={0,0,width,height};
+      mjv_updateScene(m,d,&opt,NULL,&cam,mjCAT_ALL,&scene);
+      mjr_render(viewport,&scene,&con);
+      char status[100]; std::snprintf(status,sizeof(status),"TCP error: %.4f m",err);
+      mjr_overlay(mjFONT_NORMAL,mjGRID_TOPLEFT,viewport,
+                  "7-DoF arm reach",status,&con);
+      glfwSwapBuffers(window); glfwPollEvents();
+    }
+    mjr_freeContext(&con); mjv_freeScene(&scene);
+    glfwDestroyWindow(window); glfwTerminate();
+  }
   mj_deleteData(d); mj_deleteModel(m); return err<.005?0:2;
 }

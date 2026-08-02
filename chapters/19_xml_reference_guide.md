@@ -106,6 +106,107 @@ cmake --build build -j
 
 这个微基准的绝对时间不应跨机器比较。真正有意义的是同一机器、同一构建、同一初态的相对结果。正式基准还应预热 CPU、重复多轮并报告分位数。
 
+<!-- EMBEDDED_EXAMPLE_BEGIN: 29_solver_compare -->
+### 可视化运行与效果
+
+```bash
+../../mujoco-3.11.0/bin/simulate model.xml
+```
+
+该命令使用发布包自带的官方 `simulate` 界面，可暂停、单步、施加扰动并开启接触等可视化标志。
+
+![29_solver_compare 实验运行效果](../assets/experiments/29_solver_compare.png)
+
+*29_solver_compare 的真实 MuJoCo 原生渲染结果。*
+
+### 实验完整源码
+
+以下文件与 `examples/29_solver_compare/` 中可直接编译的版本一致。
+
+#### 模型文件：`model.xml`
+
+```xml
+<mujoco model="solver comparison">
+  <option timestep="0.001" iterations="50" tolerance="1e-10" cone="pyramidal"/>
+  <default><geom type="box" size=".12 .1 .05" mass="1" friction=".8 .01 .001"/></default>
+  <worldbody>
+    <geom name="floor" type="plane" size="2 2 .1" mass="0"/>
+    <body name="box1" pos="0 0 .08"><freejoint/><geom/></body>
+    <body name="box2" pos="0 0 .20"><freejoint/><geom/></body>
+    <body name="box3" pos="0 0 .32"><freejoint/><geom/></body>
+    <body name="box4" pos="0 0 .44"><freejoint/><geom/></body>
+    <body name="box5" pos="0 0 .56"><freejoint/><geom/></body>
+  </worldbody>
+</mujoco>
+```
+
+#### 程序源码：`main.cc`
+
+```cpp
+#include <chrono>
+#include <cstdio>
+#include <cstdlib>
+#include <mujoco/mujoco.h>
+
+int main(int argc, char** argv) {
+  if (argc != 2) {
+    std::fprintf(stderr, "用法: %s model.xml\n", argv[0]);
+    return EXIT_FAILURE;
+  }
+  char error[1024] = {0};
+  mjModel* m = mj_loadXML(argv[1], NULL, error, sizeof(error));
+  if (!m) {
+    std::fprintf(stderr, "无法加载模型:\n%s\n", error);
+    return EXIT_FAILURE;
+  }
+  const int solvers[3] = {mjSOL_PGS, mjSOL_CG, mjSOL_NEWTON};
+  const char* names[3] = {"PGS", "CG", "Newton"};
+  std::puts("solver   us/step   avg_iter   max_iter   min_dist   top_z");
+  for (int s = 0; s < 3; ++s) {
+    m->opt.solver = solvers[s];
+    mjData* d = mj_makeData(m);
+    long long sum_iter = 0;
+    int max_iter = 0;
+    auto begin = std::chrono::steady_clock::now();
+    const int steps = 3000;
+    for (int k = 0; k < steps; ++k) {
+      mj_step(m, d);
+      int it = d->solver_niter[0];
+      sum_iter += it;
+      max_iter = it > max_iter ? it : max_iter;
+    }
+    auto end = std::chrono::steady_clock::now();
+    double us = std::chrono::duration<double, std::micro>(end-begin).count()/steps;
+    mjtNum min_dist = 0;  // 只比较稳态；落下过程的瞬态穿入不代表稳态精度
+    for (int i = 0; i < d->ncon; ++i)
+      min_dist = d->contact[i].dist < min_dist ? d->contact[i].dist : min_dist;
+    int top = mj_name2id(m, mjOBJ_BODY, "box5");
+    std::printf("%-7s %8.3f %10.3f %10d %10.6f %8.5f\n", names[s], us,
+                double(sum_iter)/steps, max_iter, min_dist, d->xpos[3*top+2]);
+    mj_deleteData(d);
+  }
+  mj_deleteModel(m);
+  return EXIT_SUCCESS;
+}
+```
+
+#### 构建文件：`CMakeLists.txt`
+
+```cmake
+cmake_minimum_required(VERSION 3.16)
+project(29_solver_compare LANGUAGES CXX)
+
+set(CMAKE_CXX_STANDARD 17)
+add_executable(demo main.cc)
+
+set(MUJOCO_ROOT ${CMAKE_CURRENT_LIST_DIR}/../../mujoco-3.11.0)
+target_include_directories(demo PRIVATE ${MUJOCO_ROOT}/include)
+target_link_directories(demo PRIVATE ${MUJOCO_ROOT}/lib)
+target_link_libraries(demo PRIVATE mujoco)
+set_target_properties(demo PROPERTIES BUILD_RPATH ${MUJOCO_ROOT}/lib)
+```
+<!-- EMBEDDED_EXAMPLE_END: 29_solver_compare -->
+
 ## 19.9 系统化调参流程
 
 1. 用默认 Newton、合理 timestep 建立基准；

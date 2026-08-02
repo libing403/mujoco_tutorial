@@ -119,6 +119,112 @@ cmake --build build
 
 程序不解析 XML，而是读取 `mjModel.dof_damping` 和 `dof_armature`。这是最终仿真真正使用的数值。随后调用 `mj_saveLastXML` 生成 `compiled.xml`，可对照源文件观察编译器补齐的属性。
 
+<!-- EMBEDDED_EXAMPLE_BEGIN: 15_defaults_compiler -->
+### 可视化运行与效果
+
+```bash
+../../mujoco-3.11.0/bin/simulate model.xml
+```
+
+该命令使用发布包自带的官方 `simulate` 界面，可暂停、单步、施加扰动并开启接触等可视化标志。
+
+![15_defaults_compiler 实验运行效果](../assets/experiments/15_defaults_compiler.png)
+
+*15_defaults_compiler 的真实 MuJoCo 原生渲染结果。*
+
+### 实验完整源码
+
+以下文件与 `examples/15_defaults_compiler/` 中可直接编译的版本一致。
+
+#### 模型文件：`model.xml`
+
+```xml
+<mujoco model="defaults_compiler">
+  <compiler angle="radian"/>
+  <default>
+    <joint type="hinge" axis="0 1 0" damping="0.1"/>
+    <geom type="capsule" size="0.04" rgba="0.3 0.5 0.8 1"/>
+    <default class="leg">
+      <joint damping="1.0" armature="0.02"/>
+      <geom rgba="0.2 0.7 0.3 1"/>
+    </default>
+  </default>
+  <worldbody>
+    <body pos="-0.5 0 1">
+      <joint name="base_joint"/>
+      <geom name="base_geom" fromto="0 0 0 0 0 -.4" mass="1"/>
+    </body>
+    <body pos="0 0 1" childclass="leg">
+      <joint name="leg_joint"/>
+      <geom name="leg_geom" fromto="0 0 0 0 0 -.4" mass="1"/>
+    </body>
+    <body pos="0.5 0 1" childclass="leg">
+      <joint name="override_joint" damping="0.3"/>
+      <geom name="override_geom" fromto="0 0 0 0 0 -.4" mass="1"/>
+    </body>
+  </worldbody>
+</mujoco>
+```
+
+#### 程序源码：`main.cc`
+
+```cpp
+#include <cstdio>
+#include <cstdlib>
+#include <mujoco/mujoco.h>
+
+int main(int argc, char** argv) {
+  if (argc != 2) {
+    std::fprintf(stderr, "用法: %s model.xml\n", argv[0]);
+    return EXIT_FAILURE;
+  }
+  char error[1024] = {0};
+  mjModel* m = mj_loadXML(argv[1], NULL, error, sizeof(error));
+  if (!m) {
+    std::fprintf(stderr, "无法加载 %s:\n%s\n", argv[1], error);
+    return EXIT_FAILURE;
+  }
+
+  for (int j = 0; j < m->njnt; ++j) {
+    int dof = m->jnt_dofadr[j];
+    const char* name = mj_id2name(m, mjOBJ_JOINT, j);
+    std::printf("%-14s damping=%.2f armature=%.2f\n",
+                name, m->dof_damping[dof], m->dof_armature[dof]);
+  }
+  for (int g = 0; g < m->ngeom; ++g) {
+    const char* name = mj_id2name(m, mjOBJ_GEOM, g);
+    std::printf("%-14s rgba=(%.1f %.1f %.1f %.1f)\n", name,
+                m->geom_rgba[4*g], m->geom_rgba[4*g+1],
+                m->geom_rgba[4*g+2], m->geom_rgba[4*g+3]);
+  }
+
+  if (!mj_saveLastXML("compiled.xml", m, error, sizeof(error))) {
+    std::fprintf(stderr, "保存 compiled.xml 失败: %s\n", error);
+  } else {
+    std::printf("已生成 compiled.xml，可与 model.xml 对照。\n");
+  }
+  mj_deleteModel(m);
+  return EXIT_SUCCESS;
+}
+```
+
+#### 构建文件：`CMakeLists.txt`
+
+```cmake
+cmake_minimum_required(VERSION 3.16)
+project(15_defaults_compiler LANGUAGES CXX)
+
+set(CMAKE_CXX_STANDARD 17)
+add_executable(demo main.cc)
+
+set(MUJOCO_ROOT ${CMAKE_CURRENT_LIST_DIR}/../../mujoco-3.11.0)
+target_include_directories(demo PRIVATE ${MUJOCO_ROOT}/include)
+target_link_directories(demo PRIVATE ${MUJOCO_ROOT}/lib)
+target_link_libraries(demo PRIVATE mujoco)
+set_target_properties(demo PROPERTIES BUILD_RPATH ${MUJOCO_ROOT}/lib)
+```
+<!-- EMBEDDED_EXAMPLE_END: 15_defaults_compiler -->
+
 ## 4.6 惯量推断的物理过程
 
 如果 body 没有显式 inertial，编译器把参与推断的各 geom 当作均匀密度实体。对第 `i` 个 geom：
@@ -194,6 +300,114 @@ include 是 XML 组合机制，不提供程序语言意义上的参数、循环�
 
 永远维护 MJCF/mjSpec 高层源。MJB 是构建产物，不是模型唯一副本。升级 MuJoCo 后应从高层源重新编译，不能假定旧 MJB 兼容。
 
+### 配套实验：XML 与内存 MJB 往返
+
+`examples/10_model_io` 从 XML 编译模型，将 MJB 写入内存缓冲区，再从该缓冲区加载新的 `mjModel`，并核对两者规模。
+
+```bash
+cd examples/10_model_io
+cmake -S . -B build
+cmake --build build
+./build/demo model.xml
+```
+
+<!-- EMBEDDED_EXAMPLE_BEGIN: 10_model_io -->
+### 可视化运行与效果
+
+```bash
+../../mujoco-3.11.0/bin/simulate model.xml
+```
+
+该命令使用发布包自带的官方 `simulate` 界面，可暂停、单步、施加扰动并开启接触等可视化标志。
+
+![10_model_io 实验运行效果](../assets/experiments/10_model_io.png)
+
+*10_model_io 的真实 MuJoCo 原生渲染结果。*
+
+### 实验完整源码
+
+以下文件与 `examples/10_model_io/` 中可直接编译的版本一致。
+
+#### 模型文件：`model.xml`
+
+```xml
+<mujoco model="two_link_arm">
+  <compiler angle="radian"/>
+  <option timestep="0.001" gravity="0 0 -9.81" integrator="implicitfast"/>
+  <default>
+    <joint axis="0 1 0" damping="0.2" limited="true" range="-3.14 3.14"/>
+    <geom type="capsule" size="0.04" rgba="0.25 0.55 0.85 1"/>
+    <motor ctrllimited="true" ctrlrange="-100 100"/>
+  </default>
+  <worldbody>
+    <body name="upper" pos="0 0 1">
+      <joint name="shoulder"/>
+      <geom fromto="0 0 0 0 0 -0.5" mass="1.0"/>
+      <body name="forearm" pos="0 0 -0.5">
+        <joint name="elbow"/>
+        <geom fromto="0 0 0 0 0 -0.4" mass="0.7"/>
+        <site name="tool" pos="0 0 -0.4" size="0.025" rgba="1 0.2 0.1 1"/>
+      </body>
+    </body>
+  </worldbody>
+  <actuator>
+    <motor name="shoulder_motor" joint="shoulder" gear="1"/>
+    <motor name="elbow_motor" joint="elbow" gear="1"/>
+  </actuator>
+</mujoco>
+```
+
+#### 程序源码：`main.cc`
+
+```cpp
+#include <cstdio>
+#include <cstdlib>
+#include <mujoco/mujoco.h>
+
+#include <cstring>
+#include <vector>
+
+int main(int argc, char** argv) {
+  if (argc != 2) {
+    std::fprintf(stderr, "用法: %s model.xml\n", argv[0]);
+    return EXIT_FAILURE;
+  }
+  char error[1024] = {0};
+  mjModel* xml = mj_loadXML(argv[1], NULL, error, sizeof(error));
+  if (!xml) {
+    std::fprintf(stderr, "无法加载 %s:\n%s\n", argv[1], error);
+    return EXIT_FAILURE;
+  }
+  int bytes = mj_sizeModel(xml);
+  std::vector<unsigned char> buffer(bytes);
+  mj_saveModel(xml, NULL, buffer.data(), bytes);
+  mjModel* mjb = mj_loadModelBuffer(buffer.data(), bytes);
+  if (!mjb) { std::fprintf(stderr, "无法从内存 MJB 加载\n"); return EXIT_FAILURE; }
+  std::printf("MJB bytes=%d nq=%lld nv=%lld same_model_size=%s\n", bytes,
+              (long long)mjb->nq, (long long)mjb->nv,
+              mj_sizeModel(mjb) == bytes ? "yes" : "no");
+  mj_deleteModel(mjb); mj_deleteModel(xml);
+  return EXIT_SUCCESS;
+}
+```
+
+#### 构建文件：`CMakeLists.txt`
+
+```cmake
+cmake_minimum_required(VERSION 3.16)
+project(10_model_io LANGUAGES CXX)
+
+set(CMAKE_CXX_STANDARD 17)
+add_executable(demo main.cc)
+
+set(MUJOCO_ROOT ${CMAKE_CURRENT_LIST_DIR}/../../mujoco-3.11.0)
+target_include_directories(demo PRIVATE ${MUJOCO_ROOT}/include)
+target_link_directories(demo PRIVATE ${MUJOCO_ROOT}/lib)
+target_link_libraries(demo PRIVATE mujoco)
+set_target_properties(demo PROPERTIES BUILD_RPATH ${MUJOCO_ROOT}/lib)
+```
+<!-- EMBEDDED_EXAMPLE_END: 10_model_io -->
+
 ## 4.10 规范化 MJCF 与模型审计
 
 `mj_saveLastXML` 根据最近编译信息保存规范化 MJCF。它适合：
@@ -254,4 +468,3 @@ include 是 XML 组合机制，不提供程序语言意义上的参数、循环�
 3. 把公共 range 放顶层 joint default；在 `class="arm"`、`class="leg"` 子 default 分别覆盖 damping，并覆盖各自 geom rgba。
 4. mesh scale 改变体积、质心距离和惯量尺度；视觉 mesh 不参与惯量，碰撞/惯量采用独立几何或显式 inertial。
 5. MJCF 和资产适合版本控制，因为可读可重编译；MJB 适合固定 MuJoCo 版本的部署缓存，因为加载快但版本相关。
-

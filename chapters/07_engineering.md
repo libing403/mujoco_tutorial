@@ -201,6 +201,101 @@ cmake --build build
 
 预期：body 质量仍是 1 kg，而不是 2 kg；所有球—地面接触都引用 `collision_core`，不会引用 `visual_shell`。这用运行数据证明三层分离，而不是只依赖 XML 注释。
 
+<!-- EMBEDDED_EXAMPLE_BEGIN: 18_visual_collision -->
+### 可视化运行与效果
+
+```bash
+../../mujoco-3.11.0/bin/simulate model.xml
+```
+
+该命令使用发布包自带的官方 `simulate` 界面，可暂停、单步、施加扰动并开启接触等可视化标志。
+
+![18_visual_collision 实验运行效果](../assets/experiments/18_visual_collision.png)
+
+*18_visual_collision 的真实 MuJoCo 原生渲染结果。*
+
+### 实验完整源码
+
+以下文件与 `examples/18_visual_collision/` 中可直接编译的版本一致。
+
+#### 模型文件：`model.xml`
+
+```xml
+<mujoco model="visual_collision_layers">
+  <option timestep="0.002"/>
+  <worldbody>
+    <geom name="floor" type="plane" size="2 2 .1"/>
+    <body name="ball" pos="0 0 1">
+      <freejoint/>
+      <geom name="visual_shell" type="sphere" size=".105" density="0"
+            group="2" contype="0" conaffinity="0" rgba=".2 .4 1 1"/>
+      <geom name="collision_core" type="sphere" size=".1" mass="1"
+            group="3" rgba="1 .2 .2 .25"/>
+    </body>
+  </worldbody>
+</mujoco>
+```
+
+#### 程序源码：`main.cc`
+
+```cpp
+#include <cstdio>
+#include <cstdlib>
+#include <mujoco/mujoco.h>
+
+int main(int argc, char** argv) {
+  if (argc != 2) {
+    std::fprintf(stderr, "用法: %s model.xml\n", argv[0]);
+    return EXIT_FAILURE;
+  }
+  char error[1024] = {0};
+  mjModel* m = mj_loadXML(argv[1], NULL, error, sizeof(error));
+  if (!m) {
+    std::fprintf(stderr, "无法加载 %s:\n%s\n", argv[1], error);
+    return EXIT_FAILURE;
+  }
+  mjData* d = mj_makeData(m);
+  int body = mj_name2id(m, mjOBJ_BODY, "ball");
+  std::printf("ball body mass = %.3f kg\n", m->body_mass[body]);
+  for (int g = 0; g < m->ngeom; ++g) {
+    const char* name = mj_id2name(m, mjOBJ_GEOM, g);
+    std::printf("%-15s group=%d contype=%d conaffinity=%d\n",
+                name, m->geom_group[g], m->geom_contype[g], m->geom_conaffinity[g]);
+  }
+
+  while (d->time < 1.0) mj_step(m, d);
+  std::printf("contacts after falling: %d\n", d->ncon);
+  for (int i = 0; i < d->ncon; ++i) {
+    int g1 = d->contact[i].geom[0];
+    int g2 = d->contact[i].geom[1];
+    std::printf("  %s <-> %s\n",
+                mj_id2name(m, mjOBJ_GEOM, g1),
+                mj_id2name(m, mjOBJ_GEOM, g2));
+  }
+
+  mj_deleteData(d);
+  mj_deleteModel(m);
+  return EXIT_SUCCESS;
+}
+```
+
+#### 构建文件：`CMakeLists.txt`
+
+```cmake
+cmake_minimum_required(VERSION 3.16)
+project(18_visual_collision LANGUAGES CXX)
+
+set(CMAKE_CXX_STANDARD 17)
+add_executable(demo main.cc)
+
+set(MUJOCO_ROOT ${CMAKE_CURRENT_LIST_DIR}/../../mujoco-3.11.0)
+target_include_directories(demo PRIVATE ${MUJOCO_ROOT}/include)
+target_link_directories(demo PRIVATE ${MUJOCO_ROOT}/lib)
+target_link_libraries(demo PRIVATE mujoco)
+set_target_properties(demo PROPERTIES BUILD_RPATH ${MUJOCO_ROOT}/lib)
+```
+<!-- EMBEDDED_EXAMPLE_END: 18_visual_collision -->
+
 ## 7.13 接触几何的工程简化
 
 ### 机械臂
@@ -267,4 +362,3 @@ cmake --build build
 3. 长度缩小 `10⁻³`，体积和同密度质量缩小 `10⁻⁹`，关于相似尺度的惯量约缩小 `10⁻¹⁵`。
 4. visual 检查外观/轴/单位；collision 检查凸性、关键接触面、自碰撞和 pair 数；inertia 对照 BOM/CAD 的质量、COM、主惯量并确认没有重复 geom。
 5. 仿真到接触后遍历 `contact[i].geom[0/1]`，用 `mj_id2name` 输出名称，确认只有 collision geom 与地面成对。
-

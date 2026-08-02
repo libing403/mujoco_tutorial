@@ -88,6 +88,104 @@ l=q_1-2q_2.
 
 程序打印 `ten_length`、`ten_velocity`、`actuator_force` 和 `qfrc_actuator`，把三个公式同时验证。这个最小实验是理解腱驱动手的基础。
 
+<!-- EMBEDDED_EXAMPLE_BEGIN: 22_fixed_tendon -->
+### 可视化运行与效果
+
+```bash
+../../mujoco-3.11.0/bin/simulate model.xml
+```
+
+该命令使用发布包自带的官方 `simulate` 界面，可暂停、单步、施加扰动并开启接触等可视化标志。
+
+![22_fixed_tendon 实验运行效果](../assets/experiments/22_fixed_tendon.png)
+
+*22_fixed_tendon 的真实 MuJoCo 原生渲染结果。*
+
+### 实验完整源码
+
+以下文件与 `examples/22_fixed_tendon/` 中可直接编译的版本一致。
+
+#### 模型文件：`model.xml`
+
+```xml
+<mujoco model="fixed_tendon_mapping">
+  <compiler angle="radian"/>
+  <option gravity="0 0 0"/>
+  <worldbody>
+    <body pos="0 0 1">
+      <joint name="q1" axis="0 1 0"/>
+      <geom type="capsule" fromto="0 0 0 0 0 -.4" size=".03" mass="1"/>
+      <body pos="0 0 -.4">
+        <joint name="q2" axis="0 1 0"/>
+        <geom type="capsule" fromto="0 0 0 0 0 -.3" size=".025" mass=".5"/>
+      </body>
+    </body>
+  </worldbody>
+  <tendon>
+    <fixed name="differential">
+      <joint joint="q1" coef="1"/>
+      <joint joint="q2" coef="-2"/>
+    </fixed>
+  </tendon>
+  <actuator><motor name="tendon_motor" tendon="differential" gear="1"/></actuator>
+</mujoco>
+```
+
+#### 程序源码：`main.cc`
+
+```cpp
+#include <cstdio>
+#include <cstdlib>
+#include <mujoco/mujoco.h>
+
+int main(int argc, char** argv) {
+  if (argc != 2) {
+    std::fprintf(stderr, "用法: %s model.xml\n", argv[0]);
+    return EXIT_FAILURE;
+  }
+  char error[1024] = {0};
+  mjModel* m = mj_loadXML(argv[1], NULL, error, sizeof(error));
+  if (!m) {
+    std::fprintf(stderr, "无法加载 %s:\n%s\n", argv[1], error);
+    return EXIT_FAILURE;
+  }
+  mjData* d = mj_makeData(m);
+  d->qpos[0] = 0.4;
+  d->qpos[1] = -0.1;
+  d->qvel[0] = 0.3;
+  d->qvel[1] = 0.2;
+  d->ctrl[0] = 1.0;
+  mj_forward(m, d);
+
+  std::printf("l = q1 - 2*q2 = %.6f (expected 0.6)\n", d->ten_length[0]);
+  std::printf("ldot = v1 - 2*v2 = %.6f (expected -0.1)\n", d->ten_velocity[0]);
+  std::printf("actuator scalar force = %.6f\n", d->actuator_force[0]);
+  std::printf("qfrc_actuator = (%.6f, %.6f), expected (1, -2)\n",
+              d->qfrc_actuator[0], d->qfrc_actuator[1]);
+
+  mj_deleteData(d);
+  mj_deleteModel(m);
+  return EXIT_SUCCESS;
+}
+```
+
+#### 构建文件：`CMakeLists.txt`
+
+```cmake
+cmake_minimum_required(VERSION 3.16)
+project(22_fixed_tendon LANGUAGES CXX)
+
+set(CMAKE_CXX_STANDARD 17)
+add_executable(demo main.cc)
+
+set(MUJOCO_ROOT ${CMAKE_CURRENT_LIST_DIR}/../../mujoco-3.11.0)
+target_include_directories(demo PRIVATE ${MUJOCO_ROOT}/include)
+target_link_directories(demo PRIVATE ${MUJOCO_ROOT}/lib)
+target_link_libraries(demo PRIVATE mujoco)
+set_target_properties(demo PROPERTIES BUILD_RPATH ${MUJOCO_ROOT}/lib)
+```
+<!-- EMBEDDED_EXAMPLE_END: 22_fixed_tendon -->
+
 ## 12.5 spatial tendon：三维最短路径
 
 spatial tendon 由路径元素构成：
@@ -300,4 +398,3 @@ fixed tendon 表达线性差动，spatial tendon 表达绕滑轮/指骨路径；
 3. connect 只约束锚点平移重合、保留相对旋转，更接近转动副闭合；weld 会同时锁死姿态。
 4. 软约束会尝试在其时间常数内修正巨大误差，生成大约束力/冲量；应先对齐或渐进启用。
 5. 不应。结果尚未网格收敛，当前离散或参数解释不足；继续做分辨率、timestep 和解析/实验基线对照。
-

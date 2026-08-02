@@ -73,6 +73,112 @@ time    ||delta q||   tip distance
 
 10 秒后，十亿分之一弧度已放大为米级末端差异。这不是随机数，也不是两个 data 相互污染；它是系统动力学对初值敏感。
 
+<!-- EMBEDDED_EXAMPLE_BEGIN: 17_chaotic_double_pendulum -->
+### 可视化运行与效果
+
+```bash
+../../mujoco-3.11.0/bin/simulate model.xml
+```
+
+该命令使用发布包自带的官方 `simulate` 界面，可暂停、单步、施加扰动并开启接触等可视化标志。
+
+![17_chaotic_double_pendulum 实验运行效果](../assets/experiments/17_chaotic_double_pendulum.png)
+
+*17_chaotic_double_pendulum 的真实 MuJoCo 原生渲染结果。*
+
+### 实验完整源码
+
+以下文件与 `examples/17_chaotic_double_pendulum/` 中可直接编译的版本一致。
+
+#### 模型文件：`model.xml`
+
+```xml
+<mujoco model="chaotic_double_pendulum">
+  <compiler angle="radian"/>
+  <option timestep="0.001" integrator="RK4" gravity="0 0 -9.81"/>
+  <worldbody>
+    <body pos="0 0 1.6">
+      <joint name="q1" axis="0 1 0"/>
+      <geom type="capsule" fromto="0 0 0 0 0 -.6" size=".025" mass="1"/>
+      <body pos="0 0 -.6">
+        <joint name="q2" axis="0 1 0"/>
+        <geom type="capsule" fromto="0 0 0 0 0 -.6" size=".025" mass="1"/>
+        <site name="tip" pos="0 0 -.6" size=".02"/>
+      </body>
+    </body>
+  </worldbody>
+</mujoco>
+```
+
+#### 程序源码：`main.cc`
+
+```cpp
+#include <cstdio>
+#include <cstdlib>
+#include <vector>
+#include <mujoco/mujoco.h>
+
+int main(int argc, char** argv) {
+  if (argc != 2) {
+    std::fprintf(stderr, "用法: %s model.xml\n", argv[0]);
+    return EXIT_FAILURE;
+  }
+  char error[1024] = {0};
+  mjModel* m = mj_loadXML(argv[1], NULL, error, sizeof(error));
+  if (!m) {
+    std::fprintf(stderr, "无法加载 %s:\n%s\n", argv[1], error);
+    return EXIT_FAILURE;
+  }
+  mjData* a = mj_makeData(m);
+  mjData* b = mj_makeData(m);
+  a->qpos[0] = b->qpos[0] = 2.0;
+  a->qpos[1] = 1.0;
+  b->qpos[1] = 1.0 + 1e-9;
+  mj_forward(m, a);
+  mj_forward(m, b);
+  int tip = mj_name2id(m, mjOBJ_SITE, "tip");
+  std::vector<mjtNum> dq(m->nv);
+
+  std::printf("initial perturbation = %.1e rad\n", b->qpos[1]-a->qpos[1]);
+  std::printf("%6s %14s %14s\n", "time", "||delta q||", "tip distance");
+  int next_second = 0;
+  while (a->time < 15.0) {
+    if (a->time + 0.5*m->opt.timestep >= next_second) {
+      mj_differentiatePos(m, dq.data(), 1.0, a->qpos, b->qpos);
+      mjtNum dp[3];
+      mju_sub3(dp, a->site_xpos+3*tip, b->site_xpos+3*tip);
+      std::printf("%6.1f %14.6e %14.6e\n",
+                  a->time, mju_norm(dq.data(), m->nv), mju_norm3(dp));
+      ++next_second;
+    }
+    mj_step(m, a);
+    mj_step(m, b);
+  }
+
+  mj_deleteData(b);
+  mj_deleteData(a);
+  mj_deleteModel(m);
+  return EXIT_SUCCESS;
+}
+```
+
+#### 构建文件：`CMakeLists.txt`
+
+```cmake
+cmake_minimum_required(VERSION 3.16)
+project(17_chaotic_double_pendulum LANGUAGES CXX)
+
+set(CMAKE_CXX_STANDARD 17)
+add_executable(demo main.cc)
+
+set(MUJOCO_ROOT ${CMAKE_CURRENT_LIST_DIR}/../../mujoco-3.11.0)
+target_include_directories(demo PRIVATE ${MUJOCO_ROOT}/include)
+target_link_directories(demo PRIVATE ${MUJOCO_ROOT}/lib)
+target_link_libraries(demo PRIVATE mujoco)
+set_target_properties(demo PROPERTIES BUILD_RPATH ${MUJOCO_ROOT}/lib)
+```
+<!-- EMBEDDED_EXAMPLE_END: 17_chaotic_double_pendulum -->
+
 ## 6.5 为什么使用 mj_differentiatePos
 
 本例只有 hinge，直接相减也可工作，但程序刻意使用：
@@ -176,6 +282,331 @@ graph TD
 
 不要用一个 30 秒完整 qpos 黄金文件覆盖所有层次。它难以定位失败，而且对合理的 solver/版本改进过度敏感。
 
+### 配套实验：末端雅可比与速度一致性
+
+`examples/05_jacobian` 调用 `mj_jacSite` 得到末端平移雅可比，计算 `Jp*qvel`，并与 MuJoCo 给出的 site 线速度对照。
+
+```bash
+cd examples/05_jacobian
+cmake -S . -B build
+cmake --build build
+./build/demo model.xml
+```
+
+<!-- EMBEDDED_EXAMPLE_BEGIN: 05_jacobian -->
+### 可视化运行与效果
+
+```bash
+../../mujoco-3.11.0/bin/simulate model.xml
+```
+
+该命令使用发布包自带的官方 `simulate` 界面，可暂停、单步、施加扰动并开启接触等可视化标志。
+
+![05_jacobian 实验运行效果](../assets/experiments/05_jacobian.png)
+
+*05_jacobian 的真实 MuJoCo 原生渲染结果。*
+
+### 实验完整源码
+
+以下文件与 `examples/05_jacobian/` 中可直接编译的版本一致。
+
+#### 模型文件：`model.xml`
+
+```xml
+<mujoco model="two_link_arm">
+  <compiler angle="radian"/>
+  <option timestep="0.001" gravity="0 0 -9.81" integrator="implicitfast"/>
+  <default>
+    <joint axis="0 1 0" damping="0.2" limited="true" range="-3.14 3.14"/>
+    <geom type="capsule" size="0.04" rgba="0.25 0.55 0.85 1"/>
+    <motor ctrllimited="true" ctrlrange="-100 100"/>
+  </default>
+  <worldbody>
+    <body name="upper" pos="0 0 1">
+      <joint name="shoulder"/>
+      <geom fromto="0 0 0 0 0 -0.5" mass="1.0"/>
+      <body name="forearm" pos="0 0 -0.5">
+        <joint name="elbow"/>
+        <geom fromto="0 0 0 0 0 -0.4" mass="0.7"/>
+        <site name="tool" pos="0 0 -0.4" size="0.025" rgba="1 0.2 0.1 1"/>
+      </body>
+    </body>
+  </worldbody>
+  <actuator>
+    <motor name="shoulder_motor" joint="shoulder" gear="1"/>
+    <motor name="elbow_motor" joint="elbow" gear="1"/>
+  </actuator>
+</mujoco>
+```
+
+#### 程序源码：`main.cc`
+
+```cpp
+#include <cstdio>
+#include <cstdlib>
+#include <mujoco/mujoco.h>
+
+#include <vector>
+
+int main(int argc, char** argv) {
+  if (argc != 2) {
+    std::fprintf(stderr, "用法: %s model.xml\n", argv[0]);
+    return EXIT_FAILURE;
+  }
+  char error[1024] = {0};
+  mjModel* m = mj_loadXML(argv[1], NULL, error, sizeof(error));
+  if (!m) {
+    std::fprintf(stderr, "无法加载 %s:\n%s\n", argv[1], error);
+    return EXIT_FAILURE;
+  }
+  mjData* d = mj_makeData(m);
+  d->qpos[0] = 0.4; d->qpos[1] = -0.7;
+  d->qvel[0] = 0.2; d->qvel[1] = -0.1;
+  mj_forward(m, d);
+
+  int site = mj_name2id(m, mjOBJ_SITE, "tool");
+  if (site < 0) { std::fprintf(stderr, "缺少 site: tool\n"); return EXIT_FAILURE; }
+  std::vector<mjtNum> jacp(3*m->nv), jacr(3*m->nv), velocity(3);
+  mj_jacSite(m, d, jacp.data(), jacr.data(), site);
+  mju_mulMatVec(velocity.data(), jacp.data(), d->qvel, 3, m->nv);
+  std::printf("tool pos=(%.4f %.4f %.4f) linear_velocity=J*qvel=(%.4f %.4f %.4f)\n",
+              d->site_xpos[3*site], d->site_xpos[3*site+1], d->site_xpos[3*site+2],
+              velocity[0], velocity[1], velocity[2]);
+  for (int r = 0; r < 3; ++r) {
+    std::printf("Jp row %d:", r);
+    for (int c = 0; c < m->nv; ++c) std::printf(" % .5f", jacp[r*m->nv+c]);
+    std::printf("\n");
+  }
+  mj_deleteData(d); mj_deleteModel(m);
+  return EXIT_SUCCESS;
+}
+```
+
+#### 构建文件：`CMakeLists.txt`
+
+```cmake
+cmake_minimum_required(VERSION 3.16)
+project(05_jacobian LANGUAGES CXX)
+
+set(CMAKE_CXX_STANDARD 17)
+add_executable(demo main.cc)
+
+set(MUJOCO_ROOT ${CMAKE_CURRENT_LIST_DIR}/../../mujoco-3.11.0)
+target_include_directories(demo PRIVATE ${MUJOCO_ROOT}/include)
+target_link_directories(demo PRIVATE ${MUJOCO_ROOT}/lib)
+target_link_libraries(demo PRIVATE mujoco)
+set_target_properties(demo PROPERTIES BUILD_RPATH ${MUJOCO_ROOT}/lib)
+```
+<!-- EMBEDDED_EXAMPLE_END: 05_jacobian -->
+
+### 配套实验：展开质量矩阵并检查对称性
+
+`examples/09_mass_matrix` 用 `mj_fullM` 将稀疏存储的 `qM` 展开为稠密的 \(M(q)\)，然后报告最大对称误差。
+
+```bash
+cd examples/09_mass_matrix
+cmake -S . -B build
+cmake --build build
+./build/demo model.xml
+```
+
+<!-- EMBEDDED_EXAMPLE_BEGIN: 09_mass_matrix -->
+### 可视化运行与效果
+
+```bash
+../../mujoco-3.11.0/bin/simulate model.xml
+```
+
+该命令使用发布包自带的官方 `simulate` 界面，可暂停、单步、施加扰动并开启接触等可视化标志。
+
+![09_mass_matrix 实验运行效果](../assets/experiments/09_mass_matrix.png)
+
+*09_mass_matrix 的真实 MuJoCo 原生渲染结果。*
+
+### 实验完整源码
+
+以下文件与 `examples/09_mass_matrix/` 中可直接编译的版本一致。
+
+#### 模型文件：`model.xml`
+
+```xml
+<mujoco model="two_link_arm">
+  <compiler angle="radian"/>
+  <option timestep="0.001" gravity="0 0 -9.81" integrator="implicitfast"/>
+  <default>
+    <joint axis="0 1 0" damping="0.2" limited="true" range="-3.14 3.14"/>
+    <geom type="capsule" size="0.04" rgba="0.25 0.55 0.85 1"/>
+    <motor ctrllimited="true" ctrlrange="-100 100"/>
+  </default>
+  <worldbody>
+    <body name="upper" pos="0 0 1">
+      <joint name="shoulder"/>
+      <geom fromto="0 0 0 0 0 -0.5" mass="1.0"/>
+      <body name="forearm" pos="0 0 -0.5">
+        <joint name="elbow"/>
+        <geom fromto="0 0 0 0 0 -0.4" mass="0.7"/>
+        <site name="tool" pos="0 0 -0.4" size="0.025" rgba="1 0.2 0.1 1"/>
+      </body>
+    </body>
+  </worldbody>
+  <actuator>
+    <motor name="shoulder_motor" joint="shoulder" gear="1"/>
+    <motor name="elbow_motor" joint="elbow" gear="1"/>
+  </actuator>
+</mujoco>
+```
+
+#### 程序源码：`main.cc`
+
+```cpp
+#include <cstdio>
+#include <cstdlib>
+#include <mujoco/mujoco.h>
+
+#include <vector>
+
+int main(int argc, char** argv) {
+  if (argc != 2) {
+    std::fprintf(stderr, "用法: %s model.xml\n", argv[0]);
+    return EXIT_FAILURE;
+  }
+  char error[1024] = {0};
+  mjModel* m = mj_loadXML(argv[1], NULL, error, sizeof(error));
+  if (!m) {
+    std::fprintf(stderr, "无法加载 %s:\n%s\n", argv[1], error);
+    return EXIT_FAILURE;
+  }
+  mjData* d = mj_makeData(m);
+  d->qpos[0] = 0.3; d->qpos[1] = -0.5;
+  mj_forward(m, d);
+  std::vector<mjtNum> M(m->nv*m->nv);
+  mj_fullM(m, d, M.data());
+  std::printf("dense M(q), %lld x %lld:\n", (long long)m->nv, (long long)m->nv);
+  for (int r = 0; r < m->nv; ++r) {
+    for (int c = 0; c < m->nv; ++c) std::printf(" % .8f", M[r*m->nv+c]);
+    std::printf("\n");
+  }
+  mjtNum asym = 0;
+  for (int r = 0; r < m->nv; ++r)
+    for (int c = 0; c < m->nv; ++c)
+      asym = mju_max(asym, mju_abs(M[r*m->nv+c]-M[c*m->nv+r]));
+  std::printf("max symmetry error = %.3g\n", asym);
+  mj_deleteData(d); mj_deleteModel(m);
+  return asym < 1e-12 ? EXIT_SUCCESS : EXIT_FAILURE;
+}
+```
+
+#### 构建文件：`CMakeLists.txt`
+
+```cmake
+cmake_minimum_required(VERSION 3.16)
+project(09_mass_matrix LANGUAGES CXX)
+
+set(CMAKE_CXX_STANDARD 17)
+add_executable(demo main.cc)
+
+set(MUJOCO_ROOT ${CMAKE_CURRENT_LIST_DIR}/../../mujoco-3.11.0)
+target_include_directories(demo PRIVATE ${MUJOCO_ROOT}/include)
+target_link_directories(demo PRIVATE ${MUJOCO_ROOT}/lib)
+target_link_libraries(demo PRIVATE mujoco)
+set_target_properties(demo PROPERTIES BUILD_RPATH ${MUJOCO_ROOT}/lib)
+```
+<!-- EMBEDDED_EXAMPLE_END: 09_mass_matrix -->
+
+### 配套实验：无阻尼单摆的能量漂移
+
+`examples/11_energy` 记录动能、势能和总能量，用短时无接触轨迹观察积分误差，建立带物理量单位的回归指标。
+
+```bash
+cd examples/11_energy
+cmake -S . -B build
+cmake --build build
+./build/demo model.xml
+```
+
+<!-- EMBEDDED_EXAMPLE_BEGIN: 11_energy -->
+### 可视化运行与效果
+
+```bash
+../../mujoco-3.11.0/bin/simulate model.xml
+```
+
+该命令使用发布包自带的官方 `simulate` 界面，可暂停、单步、施加扰动并开启接触等可视化标志。
+
+![11_energy 实验运行效果](../assets/experiments/11_energy.png)
+
+*11_energy 的真实 MuJoCo 原生渲染结果。*
+
+### 实验完整源码
+
+以下文件与 `examples/11_energy/` 中可直接编译的版本一致。
+
+#### 模型文件：`model.xml`
+
+```xml
+<mujoco model="conservative_pendulum">
+  <option timestep="0.0005" integrator="RK4" gravity="0 0 -9.81"/>
+  <worldbody>
+    <body pos="0 0 1.2">
+      <joint name="hinge" axis="0 1 0"/>
+      <geom type="capsule" fromto="0 0 0 0 0 -1" size="0.03" mass="1"/>
+    </body>
+  </worldbody>
+</mujoco>
+```
+
+#### 程序源码：`main.cc`
+
+```cpp
+#include <cstdio>
+#include <cstdlib>
+#include <mujoco/mujoco.h>
+
+int main(int argc, char** argv) {
+  if (argc != 2) {
+    std::fprintf(stderr, "用法: %s model.xml\n", argv[0]);
+    return EXIT_FAILURE;
+  }
+  char error[1024] = {0};
+  mjModel* m = mj_loadXML(argv[1], NULL, error, sizeof(error));
+  if (!m) {
+    std::fprintf(stderr, "无法加载 %s:\n%s\n", argv[1], error);
+    return EXIT_FAILURE;
+  }
+  mjData* d = mj_makeData(m);
+  d->qpos[0] = 0.8;
+  mj_forward(m, d);
+  mj_energyPos(m, d); mj_energyVel(m, d);
+  mjtNum e0 = d->energy[0] + d->energy[1], max_drift = 0;
+  while (d->time < 2.0) {
+    mj_step(m, d);
+    mj_energyPos(m, d); mj_energyVel(m, d);
+    max_drift = mju_max(max_drift, mju_abs(d->energy[0]+d->energy[1]-e0));
+  }
+  std::printf("E0=%.9f Efinal=%.9f max_abs_drift=%.6g\n",
+              e0, d->energy[0]+d->energy[1], max_drift);
+  mj_deleteData(d); mj_deleteModel(m);
+  return EXIT_SUCCESS;
+}
+```
+
+#### 构建文件：`CMakeLists.txt`
+
+```cmake
+cmake_minimum_required(VERSION 3.16)
+project(11_energy LANGUAGES CXX)
+
+set(CMAKE_CXX_STANDARD 17)
+add_executable(demo main.cc)
+
+set(MUJOCO_ROOT ${CMAKE_CURRENT_LIST_DIR}/../../mujoco-3.11.0)
+target_include_directories(demo PRIVATE ${MUJOCO_ROOT}/include)
+target_link_directories(demo PRIVATE ${MUJOCO_ROOT}/lib)
+target_link_libraries(demo PRIVATE mujoco)
+set_target_properties(demo PROPERTIES BUILD_RPATH ${MUJOCO_ROOT}/lib)
+```
+<!-- EMBEDDED_EXAMPLE_END: 11_energy -->
+
 ### 容差必须带单位
 
 位置可用 `1e-5 m`，角度可用 `1e-5 rad`，力矩可用额定值比例。相对误差在真值接近零时不稳定，应组合：
@@ -226,4 +657,3 @@ graph TD
 3. `q` 与 `-q` 表示同一旋转，且合法姿态在单位球面上；应计算相对旋转或使用配置流形差。
 4. 编译层检查维度/名称；几何层检查站立 keyframe 足底和质心；动力学层检查静态重力矩/质量矩阵；行为层检查扰动后稳定时间、质心范围和跌倒率。
 5. 说明逐轨迹不可复现但选定行为指标统计等价，同时报告样本量、置信区间、版本和 seed；不能声称位级或状态级一致。
-

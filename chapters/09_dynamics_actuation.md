@@ -186,6 +186,103 @@ cmake --build build
 
 预期：motor 不断加速；position 接近 1 rad 后速度下降；velocity 接近 1 rad/s 后继续匀速改变位置。这证明 ctrl 数组没有统一物理单位。
 
+<!-- EMBEDDED_EXAMPLE_BEGIN: 20_actuator_shortcuts -->
+### 可视化运行与效果
+
+```bash
+../../mujoco-3.11.0/bin/simulate model.xml
+```
+
+该命令使用发布包自带的官方 `simulate` 界面，可暂停、单步、施加扰动并开启接触等可视化标志。
+
+![20_actuator_shortcuts 实验运行效果](../assets/experiments/20_actuator_shortcuts.png)
+
+*20_actuator_shortcuts 的真实 MuJoCo 原生渲染结果。*
+
+### 实验完整源码
+
+以下文件与 `examples/20_actuator_shortcuts/` 中可直接编译的版本一致。
+
+#### 模型文件：`model.xml`
+
+```xml
+<mujoco model="actuator_shortcuts">
+  <compiler angle="radian"/>
+  <option timestep="0.001" gravity="0 0 0" integrator="implicitfast"/>
+  <default>
+    <joint axis="0 1 0" damping=".1"/>
+    <geom type="capsule" fromto="0 0 0 0 0 -.4" size=".03" mass="1" contype="0" conaffinity="0"/>
+  </default>
+  <worldbody>
+    <body pos="-.6 0 1"><joint name="motor_joint"/><geom/></body>
+    <body pos="0 0 1"><joint name="position_joint"/><geom/></body>
+    <body pos=".6 0 1"><joint name="velocity_joint"/><geom/></body>
+  </worldbody>
+  <actuator>
+    <motor name="motor" joint="motor_joint" gear="1"/>
+    <position name="position" joint="position_joint" kp="20" kv="3"/>
+    <velocity name="velocity" joint="velocity_joint" kv="3"/>
+  </actuator>
+</mujoco>
+```
+
+#### 程序源码：`main.cc`
+
+```cpp
+#include <cstdio>
+#include <cstdlib>
+#include <mujoco/mujoco.h>
+
+int main(int argc, char** argv) {
+  if (argc != 2) {
+    std::fprintf(stderr, "用法: %s model.xml\n", argv[0]);
+    return EXIT_FAILURE;
+  }
+  char error[1024] = {0};
+  mjModel* m = mj_loadXML(argv[1], NULL, error, sizeof(error));
+  if (!m) {
+    std::fprintf(stderr, "无法加载 %s:\n%s\n", argv[1], error);
+    return EXIT_FAILURE;
+  }
+  mjData* d = mj_makeData(m);
+  for (int i = 0; i < m->nu; ++i) d->ctrl[i] = 1.0;
+
+  const mjtNum sample[] = {0.1, 0.5, 1.0};
+  std::printf("all controls are numerically 1, but have different meanings\n");
+  for (int s = 0; s < 3; ++s) {
+    while (d->time < sample[s]) mj_step(m, d);
+    std::printf("t=%.1f\n", d->time);
+    for (int i = 0; i < 3; ++i) {
+      const char* name = mj_id2name(m, mjOBJ_ACTUATOR, i);
+      std::printf("  %-8s q=% .5f v=% .5f actuator_force=% .5f dof_force=% .5f\n",
+                  name, d->qpos[i], d->qvel[i],
+                  d->actuator_force[i], d->qfrc_actuator[i]);
+    }
+  }
+
+  mj_deleteData(d);
+  mj_deleteModel(m);
+  return EXIT_SUCCESS;
+}
+```
+
+#### 构建文件：`CMakeLists.txt`
+
+```cmake
+cmake_minimum_required(VERSION 3.16)
+project(20_actuator_shortcuts LANGUAGES CXX)
+
+set(CMAKE_CXX_STANDARD 17)
+add_executable(demo main.cc)
+
+set(MUJOCO_ROOT ${CMAKE_CURRENT_LIST_DIR}/../../mujoco-3.11.0)
+target_include_directories(demo PRIVATE ${MUJOCO_ROOT}/include)
+target_link_directories(demo PRIVATE ${MUJOCO_ROOT}/lib)
+target_link_libraries(demo PRIVATE mujoco)
+set_target_properties(demo PROPERTIES BUILD_RPATH ${MUJOCO_ROOT}/lib)
+```
+<!-- EMBEDDED_EXAMPLE_END: 20_actuator_shortcuts -->
+
 ## 9.11 从 ctrl 到 qfrc_actuator 的诊断链
 
 遇到“电机有命令但关节不动”，按顺序检查：
@@ -269,4 +366,3 @@ while (...) {
 3. velocity servo 只调速度，不定义停止位置；零误差时保持非零目标速度。
 4. 对该 joint 的映射广义力为 moment×force，moment 为零时不产生关节力矩，可能是几何奇异位形。
 5. 额定/峰值转矩、电流—转矩常数、减速比、转子惯量、速度—转矩/电压限制、效率、控制延迟和必要的摩擦参数。
-

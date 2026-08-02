@@ -146,6 +146,111 @@ cmake --build build
 
 把 timestep 改成 60 ms，大于 time constant：普通 filter 会出现过冲/振荡甚至发散趋势，filterexact 仍单调稳定。这是非常直接的数值反例。
 
+<!-- EMBEDDED_EXAMPLE_BEGIN: 21_activation_filter -->
+### 可视化运行与效果
+
+```bash
+../../mujoco-3.11.0/bin/simulate model.xml
+```
+
+该命令使用发布包自带的官方 `simulate` 界面，可暂停、单步、施加扰动并开启接触等可视化标志。
+
+![21_activation_filter 实验运行效果](../assets/experiments/21_activation_filter.png)
+
+*21_activation_filter 的真实 MuJoCo 原生渲染结果。*
+
+### 实验完整源码
+
+以下文件与 `examples/21_activation_filter/` 中可直接编译的版本一致。
+
+#### 模型文件：`model.xml`
+
+```xml
+<mujoco model="activation_filter">
+  <compiler angle="radian"/>
+  <option timestep="0.005" gravity="0 0 0"/>
+  <default>
+    <joint axis="0 1 0" damping=".1"/>
+    <geom type="capsule" fromto="0 0 0 0 0 -.4" size=".03" mass="1" contype="0" conaffinity="0"/>
+  </default>
+  <worldbody>
+    <body pos="-.6 0 1"><joint name="stateless_joint"/><geom/></body>
+    <body pos="0 0 1"><joint name="filter_joint"/><geom/></body>
+    <body pos=".6 0 1"><joint name="exact_joint"/><geom/></body>
+  </worldbody>
+  <actuator>
+    <general name="stateless" joint="stateless_joint" gainprm="1"/>
+    <general name="filter" joint="filter_joint" dyntype="filter" dynprm=".05" gainprm="1"/>
+    <general name="filterexact" joint="exact_joint" dyntype="filterexact" dynprm=".05" gainprm="1"/>
+  </actuator>
+</mujoco>
+```
+
+#### 程序源码：`main.cc`
+
+```cpp
+#include <cstdio>
+#include <cstdlib>
+#include <mujoco/mujoco.h>
+
+int main(int argc, char** argv) {
+  if (argc != 2) {
+    std::fprintf(stderr, "用法: %s model.xml\n", argv[0]);
+    return EXIT_FAILURE;
+  }
+  char error[1024] = {0};
+  mjModel* m = mj_loadXML(argv[1], NULL, error, sizeof(error));
+  if (!m) {
+    std::fprintf(stderr, "无法加载 %s:\n%s\n", argv[1], error);
+    return EXIT_FAILURE;
+  }
+  mjData* d = mj_makeData(m);
+  std::printf("nactuator=%lld nu=%lld na=%lld\n",
+              (long long)m->nactuator, (long long)m->nu, (long long)m->na);
+  for (int i = 0; i < m->nactuator; ++i) {
+    std::printf("%-11s actadr=%d actnum=%d\n",
+                mj_id2name(m, mjOBJ_ACTUATOR, i),
+                m->actuator_actadr[i], m->actuator_actnum[i]);
+    d->ctrl[i] = 1.0;
+  }
+
+  const mjtNum sample[] = {0.0, 0.01, 0.05, 0.10, 0.25};
+  std::printf("\n%7s %11s %11s %11s %11s %11s\n",
+              "time", "force_none", "act_filter", "force_filter",
+              "act_exact", "force_exact");
+  for (int s = 0; s < 5; ++s) {
+    while (d->time + 0.5*m->opt.timestep < sample[s]) mj_step(m, d);
+    mj_forward(m, d);
+    int af = m->actuator_actadr[1];
+    int ae = m->actuator_actadr[2];
+    std::printf("%7.3f %11.6f %11.6f %11.6f %11.6f %11.6f\n",
+                d->time, d->actuator_force[0], d->act[af], d->actuator_force[1],
+                d->act[ae], d->actuator_force[2]);
+  }
+
+  mj_deleteData(d);
+  mj_deleteModel(m);
+  return EXIT_SUCCESS;
+}
+```
+
+#### 构建文件：`CMakeLists.txt`
+
+```cmake
+cmake_minimum_required(VERSION 3.16)
+project(21_activation_filter LANGUAGES CXX)
+
+set(CMAKE_CXX_STANDARD 17)
+add_executable(demo main.cc)
+
+set(MUJOCO_ROOT ${CMAKE_CURRENT_LIST_DIR}/../../mujoco-3.11.0)
+target_include_directories(demo PRIVATE ${MUJOCO_ROOT}/include)
+target_link_directories(demo PRIVATE ${MUJOCO_ROOT}/lib)
+target_link_libraries(demo PRIVATE mujoco)
+set_target_properties(demo PROPERTIES BUILD_RPATH ${MUJOCO_ROOT}/lib)
+```
+<!-- EMBEDDED_EXAMPLE_END: 21_activation_filter -->
+
 ## 10.10 延迟不只有低通滤波
 
 真实驱动链可能包含：
@@ -289,4 +394,3 @@ keyframe 的 act 长度是 `na`，不是 `nu`。无状态和有状态 actuator �
 3. `na=2`；不能按 actuator ID 访问，必须读取第 4 actuator 的 `actuator_actadr`，它很可能是 1。
 4. 纯延迟幅值不变而相位随频率线性下降；一阶低通同时衰减高频幅值且相位渐变，时域阶跃形状也不同。
 5. 对该 joint 的广义力为 moment arm×muscle force，moment arm 为零时不产生该 joint 力矩，尽管可能作用于其他 joint。
-

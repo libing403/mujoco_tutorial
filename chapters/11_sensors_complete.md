@@ -200,6 +200,102 @@ mj_contactForce(m, d, 0, wrench);
 3. 将质量改为 2 kg，静止接触法向力约翻倍，但 accelerometer 仍约 9.81；
 4. 把 framepos 改为相对另一个 reference frame，验证坐标变化。
 
+<!-- EMBEDDED_EXAMPLE_BEGIN: 04_sensors -->
+### 可视化运行与效果
+
+```bash
+../../mujoco-3.11.0/bin/simulate model.xml
+```
+
+该命令使用发布包自带的官方 `simulate` 界面，可暂停、单步、施加扰动并开启接触等可视化标志。
+
+![04_sensors 实验运行效果](../assets/experiments/04_sensors.png)
+
+*04_sensors 的真实 MuJoCo 原生渲染结果。*
+
+### 实验完整源码
+
+以下文件与 `examples/04_sensors/` 中可直接编译的版本一致。
+
+#### 模型文件：`model.xml`
+
+```xml
+<mujoco model="sensor_contact">
+  <option timestep="0.002"/>
+  <worldbody>
+    <geom name="floor" type="plane" size="2 2 .1"/>
+    <body name="ball" pos="0 0 1">
+      <freejoint/>
+      <geom name="ball_geom" type="sphere" size="0.1" mass="1" rgba=".9 .3 .2 1"/>
+      <site name="imu" size="0.01"/>
+    </body>
+  </worldbody>
+  <sensor>
+    <framepos name="ball_position" objtype="body" objname="ball"/>
+    <velocimeter name="local_velocity" site="imu"/>
+    <accelerometer name="local_accel" site="imu"/>
+  </sensor>
+</mujoco>
+```
+
+#### 程序源码：`main.cc`
+
+```cpp
+#include <cstdio>
+#include <cstdlib>
+#include <mujoco/mujoco.h>
+
+int main(int argc, char** argv) {
+  if (argc != 2) {
+    std::fprintf(stderr, "用法: %s model.xml\n", argv[0]);
+    return EXIT_FAILURE;
+  }
+  char error[1024] = {0};
+  mjModel* m = mj_loadXML(argv[1], NULL, error, sizeof(error));
+  if (!m) {
+    std::fprintf(stderr, "无法加载 %s:\n%s\n", argv[1], error);
+    return EXIT_FAILURE;
+  }
+  mjData* d = mj_makeData(m);
+  for (int k = 0; k < 1000; ++k) mj_step(m, d);
+
+  std::printf("time=%.3f contacts=%d sensor_data=%lld\n", d->time, d->ncon,
+              (long long)m->nsensordata);
+  for (int i = 0; i < m->nsensor; ++i) {
+    const char* name = mj_id2name(m, mjOBJ_SENSOR, i);
+    int adr = m->sensor_adr[i], dim = m->sensor_dim[i];
+    std::printf("%-12s =", name ? name : "(unnamed)");
+    for (int j = 0; j < dim; ++j) std::printf(" % .5f", d->sensordata[adr+j]);
+    std::printf("\n");
+  }
+  if (d->ncon) {
+    mjtNum wrench[6];
+    mj_contactForce(m, d, 0, wrench);
+    std::printf("contact[0] frame force=(%.4f %.4f %.4f)\n", wrench[0], wrench[1], wrench[2]);
+  }
+  mj_deleteData(d);
+  mj_deleteModel(m);
+  return EXIT_SUCCESS;
+}
+```
+
+#### 构建文件：`CMakeLists.txt`
+
+```cmake
+cmake_minimum_required(VERSION 3.16)
+project(04_sensors LANGUAGES CXX)
+
+set(CMAKE_CXX_STANDARD 17)
+add_executable(demo main.cc)
+
+set(MUJOCO_ROOT ${CMAKE_CURRENT_LIST_DIR}/../../mujoco-3.11.0)
+target_include_directories(demo PRIVATE ${MUJOCO_ROOT}/include)
+target_link_directories(demo PRIVATE ${MUJOCO_ROOT}/lib)
+target_link_libraries(demo PRIVATE mujoco)
+set_target_properties(demo PROPERTIES BUILD_RPATH ${MUJOCO_ROOT}/lib)
+```
+<!-- EMBEDDED_EXAMPLE_END: 04_sensors -->
+
 ## 11.11 ground truth、measurement 与 observation
 
 建议应用层明确三层：
@@ -291,4 +387,3 @@ plugin sensor 更适合封装可复用设备模型和内部状态。若只是把
 3. 幅值增加 `|r×F|=0.1×500=50 N·m`；符号由从旧原点到新原点的 r 与力方向按右手叉乘确定。
 4. accelerometer 不直接测引力导致的坐标加速度，而测非重力支撑/惯性反作用；自由落体没有支撑力。
 5. 固定机械臂，在传感器下游沿已知 site 轴挂已知质量，计算局部重力力和力臂矩，与输出逐轴对照，再改变安装姿态复测。
-
