@@ -1,5 +1,7 @@
 # 第 26 章　LQR：从平衡点到局部最优反馈
 
+> 本书示例代码仓库：[libing403/mujoco_tutorial](https://github.com/libing403/mujoco_tutorial)
+
 线性二次调节器（LQR）不是“自动选 PD 增益”的黑盒。它在一个自洽平衡点附近，利用离散线性模型和无限时域二次代价，得到局部最优状态反馈。本章沿官方 LQR notebook 的推理链展开，并在 C++ 中直接迭代离散 Riccati 方程。
 
 ## 26.1 学习目标

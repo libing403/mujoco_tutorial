@@ -1,5 +1,7 @@
 # 第 14 章　前向运动学、速度与 Jacobian
 
+> 本书示例代码仓库：[libing403/mujoco_tutorial](https://github.com/libing403/mujoco_tutorial)
+
 机器人控制的核心转换是：关节速度如何产生末端速度，末端力如何映射为关节力矩。Jacobian 同时回答这两个问题，也是逆运动学、操作空间控制、碰撞避障、质心控制和动力学线性化的基础。
 
 ## 14.1 学习目标

@@ -1,5 +1,7 @@
 # 附录 D　实验、输出与习题导航
 
+> 本书示例代码仓库：[libing403/mujoco_tutorial](https://github.com/libing403/mujoco_tutorial)
+
 全部实验索引和运行命令见 [`examples/README.md`](../examples/README.md)。每章习题后紧跟参考答案，便于自学；培训场景可先遮住答案完成实验报告。
 
 ## D.1 基础 invariants

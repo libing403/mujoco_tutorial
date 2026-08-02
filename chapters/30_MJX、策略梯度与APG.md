@@ -1,5 +1,7 @@
 # 第 30 章　MJX、策略梯度与 APG
 
+> 本书示例代码仓库：[libing403/mujoco_tutorial](https://github.com/libing403/mujoco_tutorial)
+
 官方 `training_apg.ipynb` 展示了 MJX 可微物理怎样用于 analytical/first-order policy gradients（APG/FoPG）。本章先在原生 C++ 小系统中手工写出 through-time sensitivity recursion，使链式法则可见；再解释 MJX/JAX 如何把同一计算图批量化、自动微分并放到 accelerator。
 
 ## 30.1 学习目标

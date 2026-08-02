@@ -1,5 +1,7 @@
 # 第 4 章　MJCF 编译器、默认类与模型资产
 
+> 本书示例代码仓库：[libing403/mujoco_tutorial](https://github.com/libing403/mujoco_tutorial)
+
 真实机器人 MJCF 很少是一个平铺的大 XML。它往往由默认类、include 文件、mesh 资产和编译器推断共同生成最终 `mjModel`。只读源文件而不理解编译过程，就无法回答“这个关节最终阻尼是多少”“这个 link 的惯量从哪里来”“为什么 mesh 看得见却碰撞不对”。
 
 ## 4.1 学习目标

@@ -1,5 +1,7 @@
 # 第 34 章　Engine plugin、VFS、MJZ 与资源扩展
 
+> 本书示例代码仓库：[libing403/mujoco_tutorial](https://github.com/libing403/mujoco_tutorial)
+
 前面的章节都在 MuJoCo 已有能力范围内建模。本章讨论另一类工程问题：传感器模型、执行器动力学或碰撞形状超出了内置元素；模型资产来自内存、数据库或网络；团队还需要把模型和依赖可靠地交付到另一台机器。MuJoCo 分别用 engine plugin、VFS、resource provider、encoder/decoder 与 MJZ 解决这些问题。
 
 扩展代码会进入模型编译或动力学流水线，接口虽少，责任却很重。本章不仅列 API，还从“类型注册—模型实例—运行时状态—动态库部署”完整实现一个可加载的传感器插件。

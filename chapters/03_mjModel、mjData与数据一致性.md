@@ -1,5 +1,7 @@
 # 第 3 章　mjModel、mjData 与数据一致性
 
+> 本书示例代码仓库：[libing403/mujoco_tutorial](https://github.com/libing403/mujoco_tutorial)
+
 MuJoCo 的 API 看起来像“许多结构体和数组”，但背后有一条清晰原则：模型常量与仿真数据分离，主状态与派生结果分离。理解这条原则，才能正确修改状态、读取坐标、复制仿真、编写多线程 rollout，并避免使用陈旧缓存。
 
 ## 3.1 学习目标

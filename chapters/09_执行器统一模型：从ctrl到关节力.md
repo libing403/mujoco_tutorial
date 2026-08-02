@@ -1,5 +1,7 @@
 # 第 9 章　执行器统一模型：从 ctrl 到关节力
 
+> 本书示例代码仓库：[libing403/mujoco_tutorial](https://github.com/libing403/mujoco_tutorial)
+
 MuJoCo 的 actuator 不是“关节控制模式”枚举，而是一套可组合的传动、内部动力学和力生成模型。`d->ctrl[i]=1` 可能表示 1 N·m 电机命令、1 rad 位置目标、1 rad/s 速度目标，或肌肉激励。只有读懂 actuator 配置，控制数组才有物理意义。
 
 ## 9.1 学习目标

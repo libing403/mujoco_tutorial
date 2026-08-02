@@ -1,5 +1,7 @@
 # 第 32 章　OpenGL 离屏渲染、RGB、深度与相机标定
 
+> 本书示例代码仓库：[libing403/mujoco_tutorial](https://github.com/libing403/mujoco_tutorial)
+
 上一章得到 `mjvScene`；本章创建图形 context，把 scene rasterize 到 offscreen framebuffer，并读回 RGB/depth。重点不是写一个 viewer，而是为机器人视觉数据集、相机仿真和 CI 录制建立可解释、可复现的渲染管线。
 
 ## 32.1 学习目标

@@ -1,5 +1,7 @@
 # 第 29 章　批量 rollout、状态规范与 CPU 并行
 
+> 本书示例代码仓库：[libing403/mujoco_tutorial](https://github.com/libing403/mujoco_tutorial)
+
 rollout 是从多个初始状态出发，执行一段 control sequence 并收集 state/sensor trajectory。它是系统辨识、随机 shooting、策略评估、有限差分和强化学习的共同计算内核。官方 Python `rollout` 模块用底层 C++ 和轻量线程池消除 Python 循环开销；在原生 C++ 应用中，我们需要自己建立同样清晰的数据契约。
 
 ## 29.1 学习目标

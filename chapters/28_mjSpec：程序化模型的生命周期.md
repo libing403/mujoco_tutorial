@@ -1,5 +1,7 @@
 # 第 28 章　mjSpec：程序化模型的生命周期
 
+> 本书示例代码仓库：[libing403/mujoco_tutorial](https://github.com/libing403/mujoco_tutorial)
+
 MJCF 是声明式模型源，`mjModel` 是编译后的高性能运行表示；`mjSpec` 位于二者之间，是可编辑的模型规范树。官方 `mjspec.ipynb` 展示了解析、修改、程序化树、height field、mesh、attach 和 recompile。本章把这些能力映射到 MuJoCo 3.11.0 C API。
 
 ## 28.1 学习目标

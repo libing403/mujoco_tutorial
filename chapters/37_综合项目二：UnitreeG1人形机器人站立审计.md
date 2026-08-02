@@ -1,5 +1,7 @@
 # 第 37 章　综合项目二：Unitree G1 人形机器人站立审计
 
+> 本书示例代码仓库：[libing403/mujoco_tutorial](https://github.com/libing403/mujoco_tutorial)
+
 人形机器人项目不应从“画几根胶囊”直接跳到平衡控制。真实工程的第一关，是证明模型拓扑、质量惯量、执行器、初始状态、足底接触和坐标约定可信。
 
 本章使用 MuJoCo Menagerie 中的 Unitree G1 29-DoF 模型。它不是为教材虚构的玩具人形，而是由公开机器人描述整理而来的开源 MJCF：包含 29 个可动关节、真实网格、逐刚体质量/惯量、关节限位、力限制、双 IMU、站立 keyframe 和每只脚 4 个接触点。

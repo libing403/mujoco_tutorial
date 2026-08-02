@@ -1,5 +1,7 @@
 # 附录 B　MJCF 全元素族检索表
 
+> 本书示例代码仓库：[libing403/mujoco_tutorial](https://github.com/libing403/mujoco_tutorial)
+
 本表用于从任务定位 XML Reference。属性默认值、单位、继承、互斥和版本细节请打开本地 `docs/html/XMLreference.html`。
 
 | 任务 | 元素/子族 | 主章节 |

@@ -1,5 +1,7 @@
 # 第 27 章　状态估计：从仿真真值到 EKF
 
+> 本书示例代码仓库：[libing403/mujoco_tutorial](https://github.com/libing403/mujoco_tutorial)
+
 控制器直接读取 `d->qpos/qvel` 很方便，却会形成“真值泄漏”：真实机器人只能获得带噪声、延迟、偏置和丢包的 sensor streams。本章建立真值、测量、估计三层边界，并用 MuJoCo transition linearization 实现一个扩展 Kalman 滤波器（EKF）。
 
 ## 27.1 学习目标

@@ -1,5 +1,7 @@
 # 第 17 章　软约束、solref、solimp 与约束阻抗
 
+> 本书示例代码仓库：[libing403/mujoco_tutorial](https://github.com/libing403/mujoco_tutorial)
+
 接触、joint limit、tendon limit 和 equality 在 MuJoCo 中共享软约束框架。所谓“软”不是给每个接触简单装一根弹簧，而是指定参考加速度和阻抗，让约束求解器在满足自由动力学与纠正约束误差之间优化。理解这个框架，才能调接触而不是反复猜参数。
 
 ## 17.1 学习目标

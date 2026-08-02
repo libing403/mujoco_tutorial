@@ -1,5 +1,7 @@
 # 附录 C　线性代数、四元数、单位与坐标系速查
 
+> 本书示例代码仓库：[libing403/mujoco_tutorial](https://github.com/libing403/mujoco_tutorial)
+
 ## C.1 Row-major
 
 MuJoCo dense matrix 通常 row-major：`A[row*ncol+col]`。Jacobian `3×nv` 的第 `axis,dof` 项为 `J[axis*nv+dof]`。contact frame 的三个轴也按行连续。

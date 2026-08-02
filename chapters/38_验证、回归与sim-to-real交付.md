@@ -1,5 +1,7 @@
 # 第 38 章　验证、回归与 sim-to-real 交付
 
+> 本书示例代码仓库：[libing403/mujoco_tutorial](https://github.com/libing403/mujoco_tutorial)
+
 全书最后一章回答“怎样证明仿真可信”。验证不是寻找一条漂亮轨迹，而是从结构、运动学、动力学、接触、控制、性能和部署逐层建立独立证据，并在模型、代码或 MuJoCo 升级后自动重放。
 
 ## 38.1 学习目标

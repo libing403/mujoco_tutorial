@@ -1,5 +1,7 @@
 # 第 33 章　UI、Studio 架构与物理—渲染线程同步
 
+> 本书示例代码仓库：[libing403/mujoco_tutorial](https://github.com/libing403/mujoco_tutorial)
+
 一个能打开窗口的 demo 不等于生产级仿真应用。MuJoCo UI 是 immediate-mode 风格的通用控件系统；官方 simulate/Studio 还要协调文件加载、物理线程、render thread、鼠标扰动、profiler 和错误恢复。本章讲清架构边界，使读者能读懂官方 sample，也能避免 data race。
 
 ## 33.1 学习目标

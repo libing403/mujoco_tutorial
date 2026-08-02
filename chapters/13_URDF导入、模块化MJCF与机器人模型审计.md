@@ -1,5 +1,7 @@
 # 第 13 章　URDF 导入、模块化 MJCF 与机器人模型审计
 
+> 本书示例代码仓库：[libing403/mujoco_tutorial](https://github.com/libing403/mujoco_tutorial)
+
 拿到一个机器人 URDF 并成功加载，不代表拥有可用于动力学和控制的 MuJoCo 模型。URDF 擅长描述 link/joint 和视觉资产，但无法完整表达 MuJoCo 的接触、软约束、执行器、传感器、default、tendon、flex 和 solver 语义。工程流程应把导入视为迁移起点，再通过量化审计建立可信基线。
 
 ## 13.1 学习目标

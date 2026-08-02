@@ -1,5 +1,7 @@
 # 附录 A　C API、数组形状与生命周期速查
 
+> 本书示例代码仓库：[libing403/mujoco_tutorial](https://github.com/libing403/mujoco_tutorial)
+
 本附录用于回忆，不替代 API Reference。函数签名、nullable、版本变化以 `mujoco-3.11.0/include/mujoco/mujoco.h` 与本地官方 HTML 为准。
 
 ## A.1 对象所有权
